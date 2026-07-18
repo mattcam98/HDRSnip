@@ -5,7 +5,9 @@ obj/
 *.suo
 *.DotSettings.user
 publish/
+artifacts/
 *.png
 !docs/**
 !HDRSnip/Assets/logo.png
+!packaging/Images/*.png
 .DS_Store

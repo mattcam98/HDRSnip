@@ -20,19 +20,27 @@ public static class ToastNotificationService
 
     public static void ShowCaptureCopied(bool wasHdr, int width, int height, string? previewPngPath)
     {
-        var builder = new ToastContentBuilder()
-            .AddArgument("action", ActionOpenEditor)
-            .AddText("Screenshot copied")
-            .AddText(wasHdr
-                ? $"{width}×{height} · HDR → SDR · Click to edit or save"
-                : $"{width}×{height} · Click to edit or save");
-
-        if (!string.IsNullOrEmpty(previewPngPath) && File.Exists(previewPngPath))
+        try
         {
-            builder.AddInlineImage(new Uri(previewPngPath));
-        }
+            var builder = new ToastContentBuilder()
+                .AddArgument("action", ActionOpenEditor)
+                .AddText("Screenshot copied")
+                .AddText(wasHdr
+                    ? $"{width}×{height} · HDR → SDR · Click to edit or save"
+                    : $"{width}×{height} · Click to edit or save");
 
-        builder.Show();
+            if (!string.IsNullOrEmpty(previewPngPath) && File.Exists(previewPngPath))
+            {
+                builder.AddInlineImage(new Uri(previewPngPath));
+            }
+
+            builder.Show();
+        }
+        catch
+        {
+            // Caller falls back to tray balloon.
+            throw;
+        }
     }
 
     public static string? WriteTempPreview(BitmapSource image)

@@ -28,6 +28,14 @@ With HDR enabled, Snipping Tool / Print Screen often produce washed-out, overexp
 - [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (or SDK to build)
 - GPU/driver supporting DXGI Desktop Duplication
 
+## Install (Start menu)
+
+```powershell
+.\scripts\install-startmenu.ps1
+```
+
+Adds **HDRSnip** to your Start menu (and Desktop). No admin required. See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for uninstall and **Microsoft Store** publishing.
+
 ## Run from source
 
 ```powershell

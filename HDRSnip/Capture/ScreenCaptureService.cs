@@ -74,9 +74,6 @@ public sealed class ScreenCaptureService
             SavePng(bmp, saved);
         }
 
-        if (_config.CopyToClipboard)
-            Clipboard.SetImage(bmp);
-
         return new CaptureResult
         {
             Image = bmp,

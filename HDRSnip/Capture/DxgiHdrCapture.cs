@@ -98,15 +98,36 @@ public sealed class DxgiHdrCapture : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        try
+        // Prefer warm daemon (crash-isolated + session reuse). Fall back to one-shot worker, then GDI.
+        var daemon = CaptureHost.Daemon;
+        if (daemon is not null)
         {
-            return CaptureFp16(monitor);
+            var frame = daemon.TryCapture(monitor);
+            if (frame is not null)
+                return frame;
         }
-        catch (Exception)
-        {
-            return CaptureGdi(monitor);
-        }
+
+        var remote = CaptureWorker.TryCaptureOutOfProcess(monitor);
+        if (remote is not null)
+            return remote;
+
+        return CaptureGdi(monitor);
     }
+
+    /// <summary>In-process FP16 path used by the capture daemon / one-shot worker.</summary>
+    public CapturedFrame CaptureFp16ForWorker(MonitorInfo monitor) => CaptureFp16(monitor);
+
+    public static float[] ReadFp16RgbaPublic(MappedSubresource mapped, int width, int height) =>
+        ReadFp16Rgba(mapped, width, height);
+
+    public static bool HasHdrValuesPublic(float[] rgba) => HasHdrValues(rgba);
+
+    public static bool TryGetAdapterOutputPublic(
+        IDXGIFactory1 factory,
+        int targetIndex,
+        out IDXGIAdapter1 adapter,
+        out IDXGIOutput output) =>
+        TryGetAdapterOutput(factory, targetIndex, out adapter, out output);
 
     public CapturedFrame CaptureMonitorAtPoint(Point screenPoint)
     {
@@ -185,33 +206,37 @@ public sealed class DxgiHdrCapture : IDisposable
             using (context)
             {
                 using var output5 = output.QueryInterface<IDXGIOutput5>();
-                using var duplication = output5.DuplicateOutput1(
-                    device,
-                    0u,
-                    new[] { Format.R16G16B16A16_Float });
+                var formats = new[] { Format.R16G16B16A16_Float };
+                // Vortice overload is (device, supportedFormatsCount, formats) — NOT (device, flags, formats).
+                // Passing 0 as the 2nd arg caused E_INVALIDARG / AccessViolation.
+                using var duplication = output5.DuplicateOutput1(device, (uint)formats.Length, formats);
 
                 float[]? pixels = null;
                 bool wasHdr = monitor.IsHdr;
                 int width = monitor.Bounds.Width;
                 int height = monitor.Bounds.Height;
 
-                for (int attempt = 0; attempt < 40; attempt++)
+                for (int attempt = 0; attempt < 20; attempt++)
                 {
-                    var result = duplication.AcquireNextFrame(100, out var frameInfo, out IDXGIResource? resource);
+                    var result = duplication.AcquireNextFrame(50, out var frameInfo, out IDXGIResource? resource);
                     if (result.Failure)
                     {
                         if (result.Code == unchecked((int)0x887A0027)) // DXGI_ERROR_WAIT_TIMEOUT
                             continue;
+                        if (result.Code is unchecked((int)0x887A0026) or unchecked((int)0x887A0006))
+                            throw new InvalidOperationException("Desktop duplication access lost.");
                         result.CheckError();
                     }
 
                     bool released = false;
                     try
                     {
-                        if (frameInfo.LastPresentTime == 0)
+                        if (frameInfo.LastPresentTime == 0 && attempt < 5)
+                            continue;
+                        if (resource is null)
                             continue;
 
-                        using var texture = resource!.QueryInterface<ID3D11Texture2D>();
+                        using var texture = resource.QueryInterface<ID3D11Texture2D>();
                         var desc = texture.Description;
                         width = (int)desc.Width;
                         height = (int)desc.Height;

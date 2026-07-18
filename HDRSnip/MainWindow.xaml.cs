@@ -1,4 +1,6 @@
 ﻿using System.Drawing;
+using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using HDRSnip.Capture;
@@ -20,6 +22,9 @@ public partial class MainWindow : Window
     private string? _lastSavedPath;
     private EditorWindow? _editor;
 
+    /// <summary>Must stay alive — Icon(Stream) requires the stream for the icon lifetime.</summary>
+    private MemoryStream? _trayIconStream;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -34,6 +39,7 @@ public partial class MainWindow : Window
             ToastNotificationService.OpenEditorRequested -= OpenLastInEditor;
             _hotkeys?.Dispose();
             Tray.Dispose();
+            _trayIconStream?.Dispose();
         };
     }
 
@@ -46,13 +52,16 @@ public partial class MainWindow : Window
             if (streamInfo is not null)
             {
                 using var stream = streamInfo.Stream;
-                Tray.Icon = new Icon(stream);
+                _trayIconStream = new MemoryStream();
+                stream.CopyTo(_trayIconStream);
+                _trayIconStream.Position = 0;
+                Tray.Icon = new Icon(_trayIconStream);
                 return;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // fall through
+            App.LogCrash("TrayIcon", ex);
         }
 
         try
@@ -71,8 +80,10 @@ public partial class MainWindow : Window
         _hotkeys = new HotkeyService(this);
         try
         {
-            _hotkeys.Register(_config.RegionHotkeyModifiers, _config.RegionHotkeyVk, () => _ = StartSnipAsync(showToolbar: false));
-            _hotkeys.Register(_config.FullScreenHotkeyModifiers, _config.FullScreenHotkeyVk, () => _ = CaptureFullAsync());
+            _hotkeys.Register(_config.RegionHotkeyModifiers, _config.RegionHotkeyVk,
+                () => _ = RunCaptureSafe(() => StartSnipAsync(showToolbar: false)));
+            _hotkeys.Register(_config.FullScreenHotkeyModifiers, _config.FullScreenHotkeyVk,
+                () => _ = RunCaptureSafe(CaptureFullAsync));
             Tray.ToolTipText =
                 $"HDRSnip\n{HotkeyText.Format(_config.RegionHotkeyModifiers, _config.RegionHotkeyVk)} rectangular\n" +
                 $"{HotkeyText.Format(_config.FullScreenHotkeyModifiers, _config.FullScreenHotkeyVk)} fullscreen";
@@ -85,9 +96,30 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnTrayDoubleClick(object sender, RoutedEventArgs e) => _ = StartSnipAsync(showToolbar: true);
-    private void OnNewSnip(object sender, RoutedEventArgs e) => _ = StartSnipAsync(showToolbar: true);
-    private void OnFullSnip(object sender, RoutedEventArgs e) => _ = CaptureFullAsync();
+    private static async Task RunCaptureSafe(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("Capture", ex);
+            try
+            {
+                MessageBox.Show($"Capture failed:\n{ex.Message}", "HDRSnip",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            catch { /* ignore */ }
+        }
+    }
+
+    private void OnTrayDoubleClick(object sender, RoutedEventArgs e) =>
+        _ = RunCaptureSafe(() => StartSnipAsync(showToolbar: true));
+    private void OnNewSnip(object sender, RoutedEventArgs e) =>
+        _ = RunCaptureSafe(() => StartSnipAsync(showToolbar: true));
+    private void OnFullSnip(object sender, RoutedEventArgs e) =>
+        _ = RunCaptureSafe(CaptureFullAsync);
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
@@ -129,10 +161,6 @@ public partial class MainWindow : Window
                     break;
             }
         }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Capture failed:\n{ex.Message}", "HDRSnip", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
         finally
         {
             _busy = false;
@@ -147,31 +175,26 @@ public partial class MainWindow : Window
         {
             await CaptureFullAsyncCore();
         }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Capture failed:\n{ex.Message}", "HDRSnip", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
         finally
         {
             _busy = false;
         }
     }
 
-    private Task CaptureFullAsyncCore()
+    private async Task CaptureFullAsyncCore()
     {
-        return Dispatcher.InvokeAsync(() =>
-        {
-            var result = _capture.CaptureFullScreenAtCursor();
-            Present(result);
-        }).Task;
+        await Task.Delay(50);
+        var result = await Task.Run(() => _capture.CaptureFullScreenAtCursor()).ConfigureAwait(true);
+        Present(result);
     }
 
     private async Task CaptureRegionAsync()
     {
-        await Dispatcher.InvokeAsync(() => { }).Task;
         await Task.Delay(80);
 
-        var (frame, preview) = _capture.CaptureFrozenMonitorAtCursor();
+        // DXGI + tone-map off the UI thread so the tray app never freezes / appears hung.
+        var (frame, preview) = await Task.Run(() => _capture.CaptureFrozenMonitorAtCursor())
+            .ConfigureAwait(true);
         try
         {
             var overlay = new CaptureOverlayWindow(frame, preview);
@@ -179,7 +202,9 @@ public partial class MainWindow : Window
             if (!overlay.Confirmed || overlay.Selection is null)
                 return;
 
-            var result = _capture.CropAndFinish(frame, overlay.Selection.Value);
+            var selection = overlay.Selection.Value;
+            var result = await Task.Run(() => _capture.CropAndFinish(frame, selection))
+                .ConfigureAwait(true);
             Present(result);
         }
         finally
@@ -194,18 +219,54 @@ public partial class MainWindow : Window
         _lastWasHdr = result.WasHdr;
         _lastSavedPath = result.SavedPath;
 
+        if (_config.CopyToClipboard)
+            SafeSetClipboard(result.Image);
+
         if (_config.OpenEditorAfterCapture)
         {
             OpenLastInEditor();
             return;
         }
 
-        var previewPath = ToastNotificationService.WriteTempPreview(result.Image);
-        ToastNotificationService.ShowCaptureCopied(
-            result.WasHdr,
-            result.Image.PixelWidth,
-            result.Image.PixelHeight,
-            previewPath);
+        try
+        {
+            var previewPath = ToastNotificationService.WriteTempPreview(result.Image);
+            ToastNotificationService.ShowCaptureCopied(
+                result.WasHdr,
+                result.Image.PixelWidth,
+                result.Image.PixelHeight,
+                previewPath);
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("Toast", ex);
+            try
+            {
+                Tray.ShowBalloonTip(
+                    "HDRSnip",
+                    result.WasHdr ? "HDR screenshot copied." : "Screenshot copied.",
+                    Hardcodet.Wpf.TaskbarNotification.BalloonIcon.Info);
+            }
+            catch { /* ignore */ }
+        }
+    }
+
+    private static void SafeSetClipboard(BitmapSource image)
+    {
+        // Clipboard can be locked by other apps; never let that kill the process.
+        for (int i = 0; i < 3; i++)
+        {
+            try
+            {
+                Clipboard.SetImage(image);
+                return;
+            }
+            catch (Exception ex)
+            {
+                App.LogCrash($"Clipboard#{i}", ex);
+                Thread.Sleep(40);
+            }
+        }
     }
 
     private void OpenLastInEditor()

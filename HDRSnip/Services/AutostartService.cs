@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using Microsoft.Win32;
 
 namespace HDRSnip.Services;
@@ -17,11 +15,9 @@ public static class AutostartService
 
         if (enabled)
         {
-            var exe = Environment.ProcessPath
-                       ?? Process.GetCurrentProcess().MainModule?.FileName
-                       ?? Assembly.GetExecutingAssembly().Location;
-            if (exe.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-                exe = Path.ChangeExtension(exe, ".exe");
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrEmpty(exe))
+                exe = Path.Combine(AppContext.BaseDirectory, "HDRSnip.exe");
             key.SetValue(ValueName, $"\"{exe}\"");
         }
         else

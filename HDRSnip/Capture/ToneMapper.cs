@@ -16,8 +16,18 @@ public static class ToneMapper
         int width,
         int height,
         ToneMapMethod method,
-        double sdrWhiteNits)
+        double sdrWhiteNits,
+        int maxEdge = 0)
     {
+        if (maxEdge > 0 && Math.Max(width, height) > maxEdge)
+        {
+            double scale = maxEdge / (double)Math.Max(width, height);
+            int dw = Math.Max(1, (int)Math.Round(width * scale));
+            int dh = Math.Max(1, (int)Math.Round(height * scale));
+            var down = DownsampleRgba(rgbaLinear, width, height, dw, dh);
+            return ToSdrBitmap(down, dw, dh, method, sdrWhiteNits, maxEdge: 0);
+        }
+
         var pixels = new byte[width * height * 4];
         MapToBgra8(rgbaLinear, pixels, width, height, method, sdrWhiteNits);
 
@@ -25,6 +35,40 @@ public static class ToneMapper
         bmp.WritePixels(new Int32Rect(0, 0, width, height), pixels, width * 4, 0);
         bmp.Freeze();
         return bmp;
+    }
+
+    /// <summary>Box-filter downsample for fast overlay previews.</summary>
+    public static float[] DownsampleRgba(float[] src, int sw, int sh, int dw, int dh)
+    {
+        var dst = new float[dw * dh * 4];
+        for (int y = 0; y < dh; y++)
+        {
+            int y0 = y * sh / dh;
+            int y1 = Math.Min(sh, (y + 1) * sh / dh);
+            for (int x = 0; x < dw; x++)
+            {
+                int x0 = x * sw / dw;
+                int x1 = Math.Min(sw, (x + 1) * sw / dw);
+                float r = 0, g = 0, b = 0, a = 0;
+                int n = 0;
+                for (int yy = y0; yy < y1; yy++)
+                for (int xx = x0; xx < x1; xx++)
+                {
+                    int i = (yy * sw + xx) * 4;
+                    r += src[i]; g += src[i + 1]; b += src[i + 2]; a += src[i + 3];
+                    n++;
+                }
+
+                if (n == 0) n = 1;
+                int o = (y * dw + x) * 4;
+                dst[o] = r / n;
+                dst[o + 1] = g / n;
+                dst[o + 2] = b / n;
+                dst[o + 3] = a / n;
+            }
+        }
+
+        return dst;
     }
 
     public static void MapToBgra8(
