@@ -35,7 +35,9 @@
                  Foreground="#FF777777" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14" />
 
       <CheckBox x:Name="CopyCheck" Content="Copy to clipboard after capture" Style="{StaticResource FieldCheck}" />
-      <CheckBox x:Name="EditorCheck" Content="Open editor after capture" Style="{StaticResource FieldCheck}" />
+      <CheckBox x:Name="EditorCheck" Content="Open editor immediately (skip notification)" Style="{StaticResource FieldCheck}" />
+      <TextBlock Text="By default a toast appears — click it to open the editor. Screenshots are still copied automatically."
+                 Foreground="#FF777777" FontSize="11" TextWrapping="Wrap" Margin="0,-4,0,10" />
       <CheckBox x:Name="AutoSaveCheck" Content="Auto-save PNG on capture" Style="{StaticResource FieldCheck}" />
       <CheckBox x:Name="AutostartCheck" Content="Start with Windows" Style="{StaticResource FieldCheck}" Margin="0,0,0,18" />
 

@@ -1,5 +1,9 @@
 # HDRSnip
 
+<p align="center">
+  <img src="HDRSnip/Assets/logo.png" alt="HDRSnip logo" width="128" />
+</p>
+
 Open-source **HDR-aware snipping tool** for Windows 10/11. Captures the desktop in FP16 scRGB via DXGI Desktop Duplication, tone-maps to SDR (Windows/OBS-style), and mirrors the Snipping Tool workflow: floating mode bar, rectangular region select, clipboard + editor.
 
 ## Why
@@ -65,7 +69,8 @@ Tray → **Settings…**
 |---------|--------|
 | SDR white (nits) | Higher = darker output. Start at **250**; try **200–280** if still bright |
 | Tone mapping | Prefer **Windows / OBS** for UI/text screenshots |
-| Copy / Editor / Auto-save | Post-capture behavior |
+| Copy / toast / Editor | Copied by default; toast opens editor when clicked |
+| Open editor immediately | Opt-in to skip the toast and open the editor |
 | Start with Windows | HKCU Run key |
 
 ## How it works

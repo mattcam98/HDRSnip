@@ -28,10 +28,19 @@ public sealed class AppConfig
     public double SdrWhiteNits { get; set; } = 250;
 
     public bool CopyToClipboard { get; set; } = true;
-    public bool OpenEditorAfterCapture { get; set; } = true;
+
+    /// <summary>
+    /// When true, open the editor immediately. When false (default), copy + show a toast;
+    /// clicking the toast opens the editor.
+    /// </summary>
+    public bool OpenEditorAfterCapture { get; set; } = false;
+
     public bool AutoSave { get; set; } = false;
     public bool StartWithWindows { get; set; } = false;
     public bool PlaySound { get; set; } = false;
+
+    /// <summary>Bumped when defaults change so existing installs pick up new UX.</summary>
+    public int ConfigVersion { get; set; } = 2;
 
     /// <summary>Modifiers: Ctrl=2, Shift=4, Alt=1, Win=8. Default Ctrl+Shift+S.</summary>
     public uint RegionHotkeyModifiers { get; set; } = 6; // Ctrl+Shift
@@ -57,7 +66,9 @@ public sealed class AppConfig
             if (File.Exists(ConfigPath))
             {
                 var json = File.ReadAllText(ConfigPath);
-                return JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
+                var cfg = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
+                Migrate(cfg);
+                return cfg;
             }
         }
         catch
@@ -66,6 +77,17 @@ public sealed class AppConfig
         }
 
         return new AppConfig();
+    }
+
+    private static void Migrate(AppConfig cfg)
+    {
+        // v2: notification-first capture (don't auto-open editor).
+        if (cfg.ConfigVersion < 2)
+        {
+            cfg.OpenEditorAfterCapture = false;
+            cfg.ConfigVersion = 2;
+            try { cfg.Save(); } catch { /* ignore */ }
+        }
     }
 
     public void Save()

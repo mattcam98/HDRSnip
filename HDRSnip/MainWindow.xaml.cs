@@ -1,5 +1,6 @@
 ﻿using System.Drawing;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using HDRSnip.Capture;
 using HDRSnip.Models;
 using HDRSnip.Services;
@@ -14,6 +15,11 @@ public partial class MainWindow : Window
     private HotkeyService? _hotkeys;
     private bool _busy;
 
+    private BitmapSource? _lastImage;
+    private bool _lastWasHdr;
+    private string? _lastSavedPath;
+    private EditorWindow? _editor;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -21,9 +27,11 @@ public partial class MainWindow : Window
         _capture = new ScreenCaptureService(_config);
 
         TrySetTrayIcon();
+        ToastNotificationService.OpenEditorRequested += OpenLastInEditor;
         SourceInitialized += (_, _) => RegisterHotkeys();
         Closed += (_, _) =>
         {
+            ToastNotificationService.OpenEditorRequested -= OpenLastInEditor;
             _hotkeys?.Dispose();
             Tray.Dispose();
         };
@@ -47,7 +55,6 @@ public partial class MainWindow : Window
             // fall through
         }
 
-        // Fallback: system screenshot-ish icon via shell32
         try
         {
             Tray.Icon = SystemIcons.Application;
@@ -152,7 +159,6 @@ public partial class MainWindow : Window
 
     private Task CaptureFullAsyncCore()
     {
-        // Yield so any UI (toolbar) can close before DXGI grab.
         return Dispatcher.InvokeAsync(() =>
         {
             var result = _capture.CaptureFullScreenAtCursor();
@@ -163,7 +169,7 @@ public partial class MainWindow : Window
     private async Task CaptureRegionAsync()
     {
         await Dispatcher.InvokeAsync(() => { }).Task;
-        await Task.Delay(80); // let toolbar close / desktop settle
+        await Task.Delay(80);
 
         var (frame, preview) = _capture.CaptureFrozenMonitorAtCursor();
         try
@@ -184,17 +190,37 @@ public partial class MainWindow : Window
 
     private void Present(CaptureResult result)
     {
+        _lastImage = result.Image;
+        _lastWasHdr = result.WasHdr;
+        _lastSavedPath = result.SavedPath;
+
         if (_config.OpenEditorAfterCapture)
         {
-            var editor = new EditorWindow(result.Image, result.WasHdr, _capture, result.SavedPath);
-            editor.Show();
-            editor.Activate();
+            OpenLastInEditor();
+            return;
         }
-        else
+
+        var previewPath = ToastNotificationService.WriteTempPreview(result.Image);
+        ToastNotificationService.ShowCaptureCopied(
+            result.WasHdr,
+            result.Image.PixelWidth,
+            result.Image.PixelHeight,
+            previewPath);
+    }
+
+    private void OpenLastInEditor()
+    {
+        if (_lastImage is null) return;
+
+        if (_editor is { IsLoaded: true })
         {
-            Tray.ShowBalloonTip("HDRSnip",
-                result.WasHdr ? "HDR screenshot copied (tone-mapped to SDR)." : "Screenshot copied.",
-                Hardcodet.Wpf.TaskbarNotification.BalloonIcon.Info);
+            _editor.Activate();
+            return;
         }
+
+        _editor = new EditorWindow(_lastImage, _lastWasHdr, _capture, _lastSavedPath);
+        _editor.Closed += (_, _) => _editor = null;
+        _editor.Show();
+        _editor.Activate();
     }
 }

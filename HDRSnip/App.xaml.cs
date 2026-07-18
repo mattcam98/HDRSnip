@@ -1,6 +1,7 @@
 ﻿using System.Threading;
 using System.Windows;
 using HDRSnip.Models;
+using HDRSnip.Services;
 
 namespace HDRSnip;
 
@@ -21,6 +22,8 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
+
+        ToastNotificationService.Initialize();
 
         Config = AppConfig.Load();
         var host = new MainWindow();

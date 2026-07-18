@@ -7,4 +7,5 @@ obj/
 publish/
 *.png
 !docs/**
+!HDRSnip/Assets/logo.png
 .DS_Store
