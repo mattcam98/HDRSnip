@@ -1,0 +1,52 @@
+<Window x:Class="HDRSnip.Views.CaptureOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Background="Black"
+        Cursor="Cross"
+        KeyDown="OnKeyDown"
+        MouseLeftButtonDown="OnMouseDown"
+        MouseMove="OnMouseMove"
+        MouseLeftButtonUp="OnMouseUp">
+  <Grid>
+    <Image x:Name="PreviewImage" Stretch="Fill" />
+    <Canvas x:Name="OverlayCanvas" Background="Transparent">
+      <Rectangle x:Name="ShadeTop" Fill="#99000000" />
+      <Rectangle x:Name="ShadeBottom" Fill="#99000000" />
+      <Rectangle x:Name="ShadeLeft" Fill="#99000000" />
+      <Rectangle x:Name="ShadeRight" Fill="#99000000" />
+      <Rectangle x:Name="SelectionRect"
+                 Stroke="#FF4CC2FF"
+                 StrokeThickness="2"
+                 Fill="Transparent"
+                 Visibility="Collapsed" />
+      <Border x:Name="SizeBadge"
+              Background="#E01A1A1A"
+              CornerRadius="4"
+              Padding="8,4"
+              Visibility="Collapsed">
+        <TextBlock x:Name="SizeLabel" Foreground="White" FontSize="12" FontFamily="Segoe UI" />
+      </Border>
+      <Border x:Name="CursorBadge"
+              Background="#E01A1A1A"
+              CornerRadius="4"
+              Padding="8,4">
+        <TextBlock x:Name="CursorLabel" Foreground="#FFCCCCCC" FontSize="11" FontFamily="Consolas" Text="0, 0" />
+      </Border>
+    </Canvas>
+    <Border Background="#CC111111"
+            CornerRadius="6"
+            Padding="14,8"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Top"
+            Margin="0,20,0,0">
+      <TextBlock Text="Drag to snip  ·  Esc to cancel  ·  HDR-correct capture"
+                 Foreground="White"
+                 FontFamily="Segoe UI"
+                 FontSize="13" />
+    </Border>
+  </Grid>
+</Window>
