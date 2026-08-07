@@ -7,6 +7,7 @@ using HDRSnip.Capture;
 using HDRSnip.Models;
 using HDRSnip.Services;
 using HDRSnip.Views;
+using DataObject = System.Windows.DataObject;
 
 namespace HDRSnip;
 
@@ -254,11 +255,20 @@ public partial class MainWindow : Window
     private static void SafeSetClipboard(BitmapSource image)
     {
         // Clipboard can be locked by other apps; never let that kill the process.
+        // Offer PNG (lossless) alongside DIB so paste targets keep native sharpness.
+        var pngStream = EncodePngStream(image);
         for (int i = 0; i < 3; i++)
         {
             try
             {
-                Clipboard.SetImage(image);
+                var data = new DataObject();
+                data.SetImage(image);
+                if (pngStream is not null)
+                {
+                    pngStream.Position = 0;
+                    data.SetData("PNG", pngStream, false);
+                }
+                Clipboard.SetDataObject(data, true);
                 return;
             }
             catch (Exception ex)
@@ -266,6 +276,24 @@ public partial class MainWindow : Window
                 App.LogCrash($"Clipboard#{i}", ex);
                 Thread.Sleep(40);
             }
+        }
+    }
+
+    private static MemoryStream? EncodePngStream(BitmapSource image)
+    {
+        try
+        {
+            var ms = new MemoryStream();
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(image));
+            encoder.Save(ms);
+            ms.Position = 0;
+            return ms;
+        }
+        catch (Exception ex)
+        {
+            App.LogCrash("ClipboardPNG", ex);
+            return null;
         }
     }
 

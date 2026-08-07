@@ -11,12 +11,23 @@ namespace HDRSnip.Capture;
 /// </summary>
 public static class ToneMapper
 {
+    /// <summary>Overlay / toast previews only — never use for final capture output.</summary>
+    public const int OverlayPreviewMaxEdge = 2560;
+
+    /// <summary>Toast inline image — small, fast to write.</summary>
+    public const int ToastPreviewMaxEdge = 720;
+
+    private const int ParallelPixelThreshold = 1_500_000;
+
     public static WriteableBitmap ToSdrBitmap(
         float[] rgbaLinear,
         int width,
         int height,
         ToneMapMethod method,
         double sdrWhiteNits,
+        bool isLinearScRgb = true,
+        bool wasHdr = false,
+        double dpi = 96,
         int maxEdge = 0)
     {
         if (maxEdge > 0 && Math.Max(width, height) > maxEdge)
@@ -25,19 +36,20 @@ public static class ToneMapper
             int dw = Math.Max(1, (int)Math.Round(width * scale));
             int dh = Math.Max(1, (int)Math.Round(height * scale));
             var down = DownsampleRgba(rgbaLinear, width, height, dw, dh);
-            return ToSdrBitmap(down, dw, dh, method, sdrWhiteNits, maxEdge: 0);
+            return ToSdrBitmap(down, dw, dh, method, sdrWhiteNits, isLinearScRgb, wasHdr, dpi, maxEdge: 0);
         }
 
         var pixels = new byte[width * height * 4];
-        MapToBgra8(rgbaLinear, pixels, width, height, method, sdrWhiteNits);
+        MapToBgra8(rgbaLinear, pixels, width, height, method, sdrWhiteNits, isLinearScRgb, wasHdr);
 
-        var bmp = new WriteableBitmap(width, height, 96, 96, PixelFormats.Bgra32, null);
+        if (dpi < 1) dpi = 96;
+        var bmp = new WriteableBitmap(width, height, dpi, dpi, PixelFormats.Bgra32, null);
         bmp.WritePixels(new Int32Rect(0, 0, width, height), pixels, width * 4, 0);
         bmp.Freeze();
         return bmp;
     }
 
-    /// <summary>Box-filter downsample for fast overlay previews.</summary>
+    /// <summary>Box-filter downsample for fast overlay / toast previews.</summary>
     public static float[] DownsampleRgba(float[] src, int sw, int sh, int dw, int dh)
     {
         var dst = new float[dw * dh * 4];
@@ -71,36 +83,54 @@ public static class ToneMapper
         return dst;
     }
 
+    public static WriteableBitmap ScaleBitmapMaxEdge(BitmapSource source, int maxEdge)
+    {
+        int w = source.PixelWidth;
+        int h = source.PixelHeight;
+        if (maxEdge <= 0 || Math.Max(w, h) <= maxEdge)
+            return source as WriteableBitmap
+                   ?? CopyToWriteable(source);
+
+        double scale = maxEdge / (double)Math.Max(w, h);
+        int dw = Math.Max(1, (int)Math.Round(w * scale));
+        int dh = Math.Max(1, (int)Math.Round(h * scale));
+        var scaled = new TransformedBitmap(source, new ScaleTransform(dw / (double)w, dh / (double)h));
+        scaled.Freeze();
+        return CopyToWriteable(scaled);
+    }
+
+    private static WriteableBitmap CopyToWriteable(BitmapSource source)
+    {
+        var bmp = new WriteableBitmap(source);
+        bmp.Freeze();
+        return bmp;
+    }
+
     public static void MapToBgra8(
         float[] rgbaLinear,
         byte[] bgra8,
         int width,
         int height,
         ToneMapMethod method,
-        double sdrWhiteNits)
+        double sdrWhiteNits,
+        bool isLinearScRgb = true,
+        bool wasHdr = false)
     {
         int count = width * height;
-        bool isHdr = false;
-        for (int i = 0; i < count * 4; i += 4)
+
+        // GDI fallback stores display-referred sRGB — pass through without re-encoding.
+        if (!isLinearScRgb)
         {
-            if (rgbaLinear[i] > 1.02f || rgbaLinear[i + 1] > 1.02f || rgbaLinear[i + 2] > 1.02f)
-            {
-                isHdr = true;
-                break;
-            }
+            MapDisplayReferred(rgbaLinear, bgra8, count);
+            return;
         }
 
-        if (!isHdr)
+        // DXGI FP16 is linear scRGB. On HDR outputs, always apply the configured tone map
+        // (even when peak ≤ 1.0 — typical for UI). On SDR outputs, only gamma-encode.
+        bool toneMap = wasHdr || HasHdrPeak(rgbaLinear, count);
+        if (!toneMap)
         {
-            // Already display-referred SDR in [0,1] — treat as linear-ish passthrough with clamp.
-            for (int i = 0, o = 0; i < count; i++, o += 4)
-            {
-                int src = i * 4;
-                bgra8[o] = ToByte(rgbaLinear[src + 2]);     // B
-                bgra8[o + 1] = ToByte(rgbaLinear[src + 1]); // G
-                bgra8[o + 2] = ToByte(rgbaLinear[src]);     // R
-                bgra8[o + 3] = 255;
-            }
+            MapLinearToSrgb(rgbaLinear, bgra8, count);
             return;
         }
 
@@ -118,10 +148,76 @@ public static class ToneMapper
         }
     }
 
+    private static bool HasHdrPeak(float[] rgba, int count)
+    {
+        int end = count * 4;
+        for (int i = 0; i < end; i += 4)
+        {
+            if (rgba[i] > 1.02f || rgba[i + 1] > 1.02f || rgba[i + 2] > 1.02f)
+                return true;
+        }
+        return false;
+    }
+
+    private static void MapDisplayReferred(float[] src, byte[] dst, int count)
+    {
+        for (int i = 0, o = 0; i < count; i++, o += 4)
+        {
+            int s = i * 4;
+            dst[o] = ToByte(src[s + 2]);
+            dst[o + 1] = ToByte(src[s + 1]);
+            dst[o + 2] = ToByte(src[s]);
+            dst[o + 3] = 255;
+        }
+    }
+
+    private static void MapLinearToSrgb(float[] src, byte[] dst, int count)
+    {
+        if (count >= ParallelPixelThreshold)
+        {
+            Parallel.For(0, count, i =>
+            {
+                int s = i * 4;
+                int o = i * 4;
+                dst[o] = ToByte(LinearToSrgb(Math.Clamp(src[s + 2], 0f, 1f)));
+                dst[o + 1] = ToByte(LinearToSrgb(Math.Clamp(src[s + 1], 0f, 1f)));
+                dst[o + 2] = ToByte(LinearToSrgb(Math.Clamp(src[s], 0f, 1f)));
+                dst[o + 3] = 255;
+            });
+            return;
+        }
+
+        for (int i = 0, o = 0; i < count; i++, o += 4)
+        {
+            int s = i * 4;
+            dst[o] = ToByte(LinearToSrgb(Math.Clamp(src[s + 2], 0f, 1f)));
+            dst[o + 1] = ToByte(LinearToSrgb(Math.Clamp(src[s + 1], 0f, 1f)));
+            dst[o + 2] = ToByte(LinearToSrgb(Math.Clamp(src[s], 0f, 1f)));
+            dst[o + 3] = 255;
+        }
+    }
+
     private static void MapWindows(float[] src, byte[] dst, int count, double sdrWhiteNits)
     {
         float scale = (float)(sdrWhiteNits / 80.0);
         if (scale < 0.01f) scale = 0.01f;
+
+        if (count >= ParallelPixelThreshold)
+        {
+            Parallel.For(0, count, i =>
+            {
+                int s = i * 4;
+                int o = i * 4;
+                float r = Math.Clamp(src[s] / scale, 0f, 1f);
+                float g = Math.Clamp(src[s + 1] / scale, 0f, 1f);
+                float b = Math.Clamp(src[s + 2] / scale, 0f, 1f);
+                dst[o] = ToByte(LinearToSrgb(b));
+                dst[o + 1] = ToByte(LinearToSrgb(g));
+                dst[o + 2] = ToByte(LinearToSrgb(r));
+                dst[o + 3] = 255;
+            });
+            return;
+        }
 
         for (int i = 0, o = 0; i < count; i++, o += 4)
         {
@@ -138,7 +234,6 @@ public static class ToneMapper
 
     private static void MapAces(float[] src, byte[] dst, int count)
     {
-        // Auto-expose to ~95th percentile peak (sampled).
         float peak = 0;
         int step = Math.Max(1, count / 20000);
         var samples = new List<float>(20000);
@@ -155,6 +250,24 @@ public static class ToneMapper
         float exposure = p95 > 1e-8f ? 1f / p95 : 1f;
 
         const float a = 2.51f, b = 0.03f, c = 2.43f, d = 0.59f, e = 0.14f;
+
+        if (count >= ParallelPixelThreshold)
+        {
+            Parallel.For(0, count, i =>
+            {
+                int s = i * 4;
+                int o = i * 4;
+                float r = AcesCurve(src[s] * exposure, a, b, c, d, e);
+                float g = AcesCurve(src[s + 1] * exposure, a, b, c, d, e);
+                float bl = AcesCurve(src[s + 2] * exposure, a, b, c, d, e);
+                dst[o] = ToByte(LinearToSrgb(bl));
+                dst[o + 1] = ToByte(LinearToSrgb(g));
+                dst[o + 2] = ToByte(LinearToSrgb(r));
+                dst[o + 3] = 255;
+            });
+            return;
+        }
+
         for (int i = 0, o = 0; i < count; i++, o += 4)
         {
             int s = i * 4;
@@ -186,6 +299,26 @@ public static class ToneMapper
 
         float logAvg = (float)Math.Exp(logSum / Math.Max(n, 1));
         float scale = 0.18f / Math.Max(logAvg, 1e-10f);
+
+        if (count >= ParallelPixelThreshold)
+        {
+            Parallel.For(0, count, i =>
+            {
+                int s = i * 4;
+                int o = i * 4;
+                float r = src[s] * scale;
+                float g = src[s + 1] * scale;
+                float b = src[s + 2] * scale;
+                r = Math.Clamp(r / (1f + r), 0f, 1f);
+                g = Math.Clamp(g / (1f + g), 0f, 1f);
+                b = Math.Clamp(b / (1f + b), 0f, 1f);
+                dst[o] = ToByte(LinearToSrgb(b));
+                dst[o + 1] = ToByte(LinearToSrgb(g));
+                dst[o + 2] = ToByte(LinearToSrgb(r));
+                dst[o + 3] = 255;
+            });
+            return;
+        }
 
         for (int i = 0, o = 0; i < count; i++, o += 4)
         {

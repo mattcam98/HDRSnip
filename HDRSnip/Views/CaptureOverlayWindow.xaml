@@ -12,7 +12,10 @@
         MouseMove="OnMouseMove"
         MouseLeftButtonUp="OnMouseUp">
   <Grid>
-    <Image x:Name="PreviewImage" Stretch="Fill" />
+    <Image x:Name="PreviewImage"
+           Stretch="Fill"
+           RenderOptions.BitmapScalingMode="HighQuality"
+           SnapsToDevicePixels="True" />
     <Canvas x:Name="OverlayCanvas" Background="Transparent">
       <Rectangle x:Name="ShadeTop" Fill="#99000000" />
       <Rectangle x:Name="ShadeBottom" Fill="#99000000" />

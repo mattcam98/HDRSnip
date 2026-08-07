@@ -22,10 +22,12 @@ public partial class CaptureOverlayWindow : Window
         _frame = frame;
         InitializeComponent();
 
-        Left = frame.MonitorBounds.Left;
-        Top = frame.MonitorBounds.Top;
-        Width = frame.MonitorBounds.Width;
-        Height = frame.MonitorBounds.Height;
+        // DXGI bounds are physical pixels; WPF Left/Top/Width/Height are DIPs.
+        var (left, top, width, height) = MonitorDpi.PhysicalToDip(frame.MonitorBounds);
+        Left = left;
+        Top = top;
+        Width = width;
+        Height = height;
 
         PreviewImage.Source = preview;
         Loaded += (_, _) =>
@@ -48,7 +50,8 @@ public partial class CaptureOverlayWindow : Window
     private void OnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
         var pos = e.GetPosition(this);
-        CursorLabel.Text = $"{(int)pos.X}, {(int)pos.Y}";
+        var (px, py) = DipToPixels(pos.X, pos.Y);
+        CursorLabel.Text = $"{px}, {py}";
         Canvas.SetLeft(CursorBadge, Math.Min(pos.X + 16, ActualWidth - 90));
         Canvas.SetTop(CursorBadge, Math.Min(pos.Y + 16, ActualHeight - 36));
 
@@ -71,14 +74,7 @@ public partial class CaptureOverlayWindow : Window
             return;
         }
 
-        var scaleX = _frame.Width / Math.Max(ActualWidth, 1);
-        var scaleY = _frame.Height / Math.Max(ActualHeight, 1);
-        Selection = new Int32Rect(
-            (int)Math.Round(rect.X * scaleX),
-            (int)Math.Round(rect.Y * scaleY),
-            Math.Max(1, (int)Math.Round(rect.Width * scaleX)),
-            Math.Max(1, (int)Math.Round(rect.Height * scaleY)));
-
+        Selection = DipRectToPixelSelection(rect);
         Confirmed = true;
         Close();
     }
@@ -99,7 +95,9 @@ public partial class CaptureOverlayWindow : Window
         Canvas.SetTop(SelectionRect, r.Y);
         SelectionRect.Width = r.Width;
         SelectionRect.Height = r.Height;
-        SizeLabel.Text = $"{(int)r.Width} × {(int)r.Height}";
+
+        var sel = DipRectToPixelSelection(r);
+        SizeLabel.Text = $"{sel.Width} × {sel.Height}";
         Canvas.SetLeft(SizeBadge, r.X);
         Canvas.SetTop(SizeBadge, Math.Max(0, r.Y - 28));
         SizeBadge.Visibility = r.Width > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -113,6 +111,32 @@ public partial class CaptureOverlayWindow : Window
         Place(ShadeBottom, 0, r.Y + r.Height, w, Math.Max(0, h - (r.Y + r.Height)));
         Place(ShadeLeft, 0, r.Y, Math.Max(0, r.X), r.Height);
         Place(ShadeRight, r.X + r.Width, r.Y, Math.Max(0, w - (r.X + r.Width)), r.Height);
+    }
+
+    private (int X, int Y) DipToPixels(double x, double y)
+    {
+        double scaleX = _frame.Width / Math.Max(ActualWidth, 1);
+        double scaleY = _frame.Height / Math.Max(ActualHeight, 1);
+        return (
+            (int)Math.Round(x * scaleX),
+            (int)Math.Round(y * scaleY));
+    }
+
+    private Int32Rect DipRectToPixelSelection(Rect rect)
+    {
+        double scaleX = _frame.Width / Math.Max(ActualWidth, 1);
+        double scaleY = _frame.Height / Math.Max(ActualHeight, 1);
+        int x = (int)Math.Round(rect.X * scaleX);
+        int y = (int)Math.Round(rect.Y * scaleY);
+        int w = Math.Max(1, (int)Math.Round(rect.Width * scaleX));
+        int h = Math.Max(1, (int)Math.Round(rect.Height * scaleY));
+
+        // Clamp to native frame pixels so DPI rounding never invents out-of-range crops.
+        x = Math.Clamp(x, 0, _frame.Width - 1);
+        y = Math.Clamp(y, 0, _frame.Height - 1);
+        w = Math.Clamp(w, 1, _frame.Width - x);
+        h = Math.Clamp(h, 1, _frame.Height - y);
+        return new Int32Rect(x, y, w, h);
     }
 
     private static void Place(Rectangle rect, double x, double y, double w, double h)

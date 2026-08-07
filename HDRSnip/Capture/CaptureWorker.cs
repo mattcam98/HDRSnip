@@ -157,7 +157,10 @@ public static class CaptureWorker
             Width = width,
             Height = height,
             WasHdr = wasHdr,
-            MonitorBounds = new System.Drawing.Rectangle(left, top, bw, bh),
+            IsLinearScRgb = true,
+            MonitorBounds = bw > 0 && bh > 0
+                ? new System.Drawing.Rectangle(left, top, bw, bh)
+                : fallbackBounds,
             RgbaLinear = rgba
         };
     }

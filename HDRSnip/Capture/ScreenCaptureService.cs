@@ -40,9 +40,13 @@ public sealed class ScreenCaptureService
     {
         GetCursorPos(out var pt);
         var frame = _capture.CaptureMonitorAtPoint(new System.Drawing.Point(pt.X, pt.Y));
+        double dpi = MonitorDpi.GetDpi(frame.MonitorBounds);
+        // Downsample overlay preview only — final crop stays native resolution.
         var preview = ToneMapper.ToSdrBitmap(
             frame.RgbaLinear, frame.Width, frame.Height,
-            _config.ToneMapMethod, _config.SdrWhiteNits);
+            _config.ToneMapMethod, _config.SdrWhiteNits,
+            frame.IsLinearScRgb, frame.WasHdr, dpi,
+            maxEdge: ToneMapper.OverlayPreviewMaxEdge);
         return (frame, preview);
     }
 
@@ -56,6 +60,7 @@ public sealed class ScreenCaptureService
             Height = crop.Height,
             MonitorBounds = frame.MonitorBounds,
             WasHdr = frame.WasHdr,
+            IsLinearScRgb = frame.IsLinearScRgb,
             RgbaLinear = cropped
         };
         return Finish(croppedFrame, null);
@@ -63,9 +68,12 @@ public sealed class ScreenCaptureService
 
     public CaptureResult Finish(CapturedFrame frame, string? forcePath)
     {
+        // Always native resolution — never pass maxEdge here.
+        double dpi = MonitorDpi.GetDpi(frame.MonitorBounds);
         var bmp = ToneMapper.ToSdrBitmap(
             frame.RgbaLinear, frame.Width, frame.Height,
-            _config.ToneMapMethod, _config.SdrWhiteNits);
+            _config.ToneMapMethod, _config.SdrWhiteNits,
+            frame.IsLinearScRgb, frame.WasHdr, dpi);
 
         string? saved = forcePath;
         if (_config.AutoSave || forcePath is not null)

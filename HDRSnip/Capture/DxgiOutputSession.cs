@@ -102,6 +102,7 @@ public sealed class DxgiOutputSession : IDisposable
             Height = height,
             MonitorBounds = _monitor.Bounds,
             WasHdr = wasHdr,
+            IsLinearScRgb = true,
             RgbaLinear = pixels
         };
     }

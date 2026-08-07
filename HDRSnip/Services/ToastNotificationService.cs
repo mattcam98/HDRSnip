@@ -50,8 +50,11 @@ public static class ToastNotificationService
             var dir = Path.Combine(Path.GetTempPath(), "HDRSnip");
             Directory.CreateDirectory(dir);
             var path = Path.Combine(dir, "last-capture.png");
+            // Small preview only — clipboard / saved PNG stay full resolution.
+            var preview = Capture.ToneMapper.ScaleBitmapMaxEdge(
+                image, Capture.ToneMapper.ToastPreviewMaxEdge);
             var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(image));
+            encoder.Frames.Add(BitmapFrame.Create(preview));
             using var fs = File.Create(path);
             encoder.Save(fs);
             return path;

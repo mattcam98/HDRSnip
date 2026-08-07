@@ -43,6 +43,8 @@ public static class FrameSerializer
             Width = width,
             Height = height,
             WasHdr = wasHdr,
+            // Daemon only serves DXGI FP16 frames.
+            IsLinearScRgb = true,
             MonitorBounds = bw > 0 && bh > 0
                 ? new System.Drawing.Rectangle(left, top, bw, bh)
                 : fallbackBounds,

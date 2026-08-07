@@ -25,6 +25,12 @@ public sealed class CapturedFrame : IDisposable
     public required Rectangle MonitorBounds { get; init; }
     public required bool WasHdr { get; init; }
 
+    /// <summary>
+    /// True for DXGI FP16 captures (linear scRGB, 1.0 = 80 nits).
+    /// False for GDI fallback (display-referred sRGB in [0,1]).
+    /// </summary>
+    public required bool IsLinearScRgb { get; init; }
+
     /// <summary>Linear scRGB RGBA float32, length = Width*Height*4.</summary>
     public required float[] RgbaLinear { get; init; }
 
@@ -156,11 +162,13 @@ public sealed class DxgiHdrCapture : IDisposable
 
         var composed = new float[vw * vh * 4];
         bool anyHdr = false;
+        bool allLinear = true;
 
         foreach (var m in monitors)
         {
             using var frame = CaptureMonitor(m);
             anyHdr |= frame.WasHdr;
+            allLinear &= frame.IsLinearScRgb;
             int ox = m.Bounds.Left - left;
             int oy = m.Bounds.Top - top;
             BlitRgba(frame.RgbaLinear, frame.Width, frame.Height, composed, vw, vh, ox, oy);
@@ -172,6 +180,7 @@ public sealed class DxgiHdrCapture : IDisposable
             Height = vh,
             MonitorBounds = new Rectangle(left, top, vw, vh),
             WasHdr = anyHdr,
+            IsLinearScRgb = allLinear,
             RgbaLinear = composed
         };
     }
@@ -295,6 +304,7 @@ public sealed class DxgiHdrCapture : IDisposable
                     Height = height,
                     MonitorBounds = monitor.Bounds,
                     WasHdr = wasHdr,
+                    IsLinearScRgb = true,
                     RgbaLinear = pixels
                 };
             }
@@ -376,6 +386,7 @@ public sealed class DxgiHdrCapture : IDisposable
                 Height = h,
                 MonitorBounds = bounds,
                 WasHdr = false,
+                IsLinearScRgb = false,
                 RgbaLinear = rgba
             };
         }

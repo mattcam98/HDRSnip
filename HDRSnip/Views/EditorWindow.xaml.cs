@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using HDRSnip.Capture;
 using Microsoft.Win32;
+using DataObject = System.Windows.DataObject;
 
 namespace HDRSnip.Views;
 
@@ -29,7 +30,23 @@ public partial class EditorWindow : Window
 
     private void OnCopy(object sender, RoutedEventArgs e)
     {
-        Clipboard.SetImage(_image);
+        var data = new DataObject();
+        data.SetImage(_image);
+        try
+        {
+            var ms = new MemoryStream();
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(_image));
+            encoder.Save(ms);
+            ms.Position = 0;
+            data.SetData("PNG", ms, false);
+        }
+        catch
+        {
+            // DIB alone is still fine.
+        }
+
+        Clipboard.SetDataObject(data, true);
         StatusText.Text = "Copied to clipboard";
     }
 
