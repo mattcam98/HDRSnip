@@ -123,21 +123,58 @@ Free.
 
 ---
 
-## 3. The runFullTrust warning
+## 3. The runFullTrust capability
 
-Every Win32 desktop app packaged as MSIX must declare `runFullTrust`, and Partner Center
-flags it. It is not a blocker; justify it in **Submission options → Notes for
-certification**:
+Partner Center flags `runFullTrust` as a restricted capability and asks you to justify it
+before the package is accepted. This is expected, not a rejection.
+
+Every Win32 desktop application packaged as MSIX declares `runFullTrust` — it is required
+by the Desktop Bridge app model itself, for any app with
+`EntryPoint="Windows.FullTrustApplication"`. Do not remove it; the package will not run.
+Approval is routine for desktop apps, though the first submission can sit for a few days.
+
+Paste this into **Restricted capabilities → Why do you need the runFullTrust capability**:
 
 ```
-HDRSnip is a classic Win32/WPF desktop application packaged with MSIX (Desktop Bridge).
-runFullTrust is required to:
-  - capture the desktop via DXGI Desktop Duplication, which is the only API that
-    exposes the FP16 HDR framebuffer this app exists to read
-  - register global hotkeys and run from the notification area
-  - write to the clipboard and to the user's chosen Pictures folder
-The app does not request elevation, makes no network calls, and collects no data.
+HDRSnip is a classic Win32 desktop application (C#/WPF, .NET 8) packaged with
+MSIX via the Desktop Bridge. It is declared as
+EntryPoint="Windows.FullTrustApplication", and runFullTrust is required by that
+app model itself — a packaged desktop application cannot run without it.
+
+The app takes HDR-correct screenshots. When Windows HDR is enabled, the built-in
+Snipping Tool and Print Screen produce washed-out results; HDRSnip captures the
+desktop in floating-point colour and tone-maps it to SDR so text and colour stay
+readable.
+
+Full trust is used for exactly four things:
+
+1. DXGI Desktop Duplication (IDXGIOutput5::DuplicateOutput1 with
+   DXGI_FORMAT_R16G16B16A16_FLOAT) to read the desktop in high dynamic range.
+   This is the core function of the app.
+2. RegisterHotKey for the user-configurable global capture hotkeys
+   (default Ctrl+Shift+S and Ctrl+Shift+PrintScreen).
+3. Clipboard access, to place the finished screenshot on the clipboard.
+4. Writing PNG files to a folder the user chooses (default: Pictures\HDRSnip),
+   and a small JSON settings file plus an error log under LocalAppData.
+
+The app also runs a second instance of its own executable as a child process to
+host the DXGI capture work, so that a graphics driver fault cannot terminate the
+tray application. This child communicates only with its parent, over a local
+named pipe and shared memory. It performs no other function.
+
+HDRSnip does not request administrator elevation (the manifest declares
+asInvoker), makes no network connections, has no accounts or telemetry, and
+collects no personal data. Screenshots never leave the user's machine. Desktop
+Duplication respects protected-content restrictions enforced by Windows.
+
+The app is open source under the MIT licence and the full implementation can be
+reviewed at https://github.com/mattcam98/HDRSnip
 ```
+
+The justification rests on the app-model requirement, which is not arguable. It
+deliberately avoids claiming Desktop Duplication is the *only* way to read an HDR
+framebuffer — `Windows.Graphics.Capture` also supports `R16G16B16A16Float` on Windows 11,
+and a reviewer who knows that should not find an overstatement in your submission.
 
 ---
 
