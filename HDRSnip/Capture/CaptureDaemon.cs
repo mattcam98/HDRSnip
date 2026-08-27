@@ -91,7 +91,7 @@ public static class CaptureDaemon
                     var monitor = monitors.FirstOrDefault(m => m.OutputIndex == outputIndex)
                                   ?? throw new InvalidOperationException($"Output {outputIndex} not found.");
 
-                    var session = sessions.GetOrAdd(outputIndex, _ => new DxgiOutputSession(monitor));
+                    var session = GetOrRecreateSession(sessions, outputIndex, monitor);
                     CapturedFrame frame;
                     try
                     {
@@ -121,5 +121,19 @@ public static class CaptureDaemon
 
             PipeIo.WriteLine(server, "ERR Unknown command");
         }
+    }
+
+    private static DxgiOutputSession GetOrRecreateSession(
+        ConcurrentDictionary<int, DxgiOutputSession> sessions,
+        int outputIndex,
+        MonitorInfo monitor)
+    {
+        if (sessions.TryGetValue(outputIndex, out var existing) && existing.Matches(monitor))
+            return existing;
+
+        if (sessions.TryRemove(outputIndex, out var stale))
+            stale.Dispose();
+
+        return sessions.GetOrAdd(outputIndex, _ => new DxgiOutputSession(monitor));
     }
 }

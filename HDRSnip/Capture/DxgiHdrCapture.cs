@@ -1,11 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
-using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
-using FeatureLevel = Vortice.Direct3D.FeatureLevel;
-using MapFlags = Vortice.Direct3D11.MapFlags;
 
 namespace HDRSnip.Capture;
 
@@ -187,128 +183,8 @@ public sealed class DxgiHdrCapture : IDisposable
 
     private static CapturedFrame CaptureFp16(MonitorInfo monitor)
     {
-        using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-        if (!TryGetAdapterOutput(factory, monitor.OutputIndex, out var adapter, out var output))
-            throw new InvalidOperationException($"Output {monitor.OutputIndex} not found.");
-
-        using (adapter)
-        using (output)
-        {
-            var featureLevels = new[]
-            {
-                FeatureLevel.Level_11_1,
-                FeatureLevel.Level_11_0,
-                FeatureLevel.Level_10_1,
-                FeatureLevel.Level_10_0
-            };
-
-            D3D11.D3D11CreateDevice(
-                adapter,
-                DriverType.Unknown,
-                DeviceCreationFlags.BgraSupport,
-                featureLevels,
-                out ID3D11Device device,
-                out var _,
-                out ID3D11DeviceContext context).CheckError();
-
-            using (device)
-            using (context)
-            {
-                using var output5 = output.QueryInterface<IDXGIOutput5>();
-                var formats = new[] { Format.R16G16B16A16_Float };
-                // Vortice overload is (device, supportedFormatsCount, formats) — NOT (device, flags, formats).
-                // Passing 0 as the 2nd arg caused E_INVALIDARG / AccessViolation.
-                using var duplication = output5.DuplicateOutput1(device, (uint)formats.Length, formats);
-
-                float[]? pixels = null;
-                bool wasHdr = monitor.IsHdr;
-                int width = monitor.Bounds.Width;
-                int height = monitor.Bounds.Height;
-
-                for (int attempt = 0; attempt < 20; attempt++)
-                {
-                    var result = duplication.AcquireNextFrame(50, out var frameInfo, out IDXGIResource? resource);
-                    if (result.Failure)
-                    {
-                        if (result.Code == unchecked((int)0x887A0027)) // DXGI_ERROR_WAIT_TIMEOUT
-                            continue;
-                        if (result.Code is unchecked((int)0x887A0026) or unchecked((int)0x887A0006))
-                            throw new InvalidOperationException("Desktop duplication access lost.");
-                        result.CheckError();
-                    }
-
-                    bool released = false;
-                    try
-                    {
-                        if (frameInfo.LastPresentTime == 0 && attempt < 5)
-                            continue;
-                        if (resource is null)
-                            continue;
-
-                        using var texture = resource.QueryInterface<ID3D11Texture2D>();
-                        var desc = texture.Description;
-                        width = (int)desc.Width;
-                        height = (int)desc.Height;
-
-                        var stagingDesc = new Texture2DDescription
-                        {
-                            Width = desc.Width,
-                            Height = desc.Height,
-                            MipLevels = 1,
-                            ArraySize = 1,
-                            Format = Format.R16G16B16A16_Float,
-                            SampleDescription = new SampleDescription(1, 0),
-                            Usage = ResourceUsage.Staging,
-                            CPUAccessFlags = CpuAccessFlags.Read,
-                            BindFlags = BindFlags.None,
-                            MiscFlags = ResourceOptionFlags.None
-                        };
-
-                        using var staging = device.CreateTexture2D(stagingDesc);
-                        context.CopyResource(staging, texture);
-
-                        duplication.ReleaseFrame();
-                        released = true;
-                        resource.Dispose();
-                        resource = null;
-
-                        var mapped = context.Map(staging, 0, MapMode.Read, MapFlags.None);
-                        try
-                        {
-                            pixels = ReadFp16Rgba(mapped, width, height);
-                            wasHdr = wasHdr || HasHdrValues(pixels);
-                        }
-                        finally
-                        {
-                            context.Unmap(staging, 0);
-                        }
-
-                        break;
-                    }
-                    finally
-                    {
-                        if (!released)
-                        {
-                            try { duplication.ReleaseFrame(); } catch { /* ignore */ }
-                        }
-                        resource?.Dispose();
-                    }
-                }
-
-                if (pixels is null)
-                    throw new InvalidOperationException("Timed out waiting for desktop frame.");
-
-                return new CapturedFrame
-                {
-                    Width = width,
-                    Height = height,
-                    MonitorBounds = monitor.Bounds,
-                    WasHdr = wasHdr,
-                    IsLinearScRgb = true,
-                    RgbaLinear = pixels
-                };
-            }
-        }
+        using var session = new DxgiOutputSession(monitor);
+        return session.Grab();
     }
 
     private static unsafe float[] ReadFp16Rgba(MappedSubresource mapped, int width, int height)
