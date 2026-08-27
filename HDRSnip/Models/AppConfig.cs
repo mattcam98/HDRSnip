@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace HDRSnip.Models;
 
@@ -10,54 +11,79 @@ public enum ToneMapMethod
     Reinhard
 }
 
-public enum CaptureMode
+public enum SnipMode
 {
     Rectangle,
-    Window,
     FullScreen
 }
 
+/// <summary>
+/// User settings, persisted as JSON under %LOCALAPPDATA%\HDRSnip.
+/// Hotkeys stay as flat scalars on disk so configs written by earlier versions
+/// keep loading; the rest of the app sees them through <see cref="Hotkey"/>.
+/// </summary>
 public sealed class AppConfig
 {
+    private const int CurrentVersion = 3;
+
     public string SaveFolder { get; set; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "HDRSnip");
 
     public ToneMapMethod ToneMapMethod { get; set; } = ToneMapMethod.Windows;
 
-    /// <summary>SDR paper-white in nits (Windows scRGB: 1.0 = 80 nits). Higher = darker output.</summary>
+    /// <summary>SDR paper white in nits (scRGB: 1.0 = 80 nits). Higher means a darker screenshot.</summary>
     public double SdrWhiteNits { get; set; } = 250;
 
     public bool CopyToClipboard { get; set; } = true;
 
-    /// <summary>
-    /// When true, open the editor immediately. When false (default), copy + show a toast;
-    /// clicking the toast opens the editor.
-    /// </summary>
-    public bool OpenEditorAfterCapture { get; set; } = false;
+    /// <summary>Open the editor straight away instead of showing the toast.</summary>
+    public bool OpenEditorAfterCapture { get; set; }
 
-    public bool AutoSave { get; set; } = false;
-    public bool StartWithWindows { get; set; } = false;
-    public bool PlaySound { get; set; } = false;
+    public bool AutoSave { get; set; }
 
-    /// <summary>Bumped when defaults change so existing installs pick up new UX.</summary>
-    public int ConfigVersion { get; set; } = 2;
+    public bool StartWithWindows { get; set; }
 
-    /// <summary>Modifiers: Ctrl=2, Shift=4, Alt=1, Win=8. Default Ctrl+Shift+S.</summary>
-    public uint RegionHotkeyModifiers { get; set; } = 6; // Ctrl+Shift
+    public int ConfigVersion { get; set; } = CurrentVersion;
+
+    public uint RegionHotkeyModifiers { get; set; } = (uint)(HotkeyModifiers.Control | HotkeyModifiers.Shift);
     public uint RegionHotkeyVk { get; set; } = 0x53; // S
 
-    public uint FullScreenHotkeyModifiers { get; set; } = 6; // Ctrl+Shift
+    public uint FullScreenHotkeyModifiers { get; set; } = (uint)(HotkeyModifiers.Control | HotkeyModifiers.Shift);
     public uint FullScreenHotkeyVk { get; set; } = 0x2C; // Print Screen
 
-    private static string ConfigPath =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "HDRSnip", "config.json");
+    [JsonIgnore]
+    public Hotkey RegionHotkey
+    {
+        get => new((HotkeyModifiers)RegionHotkeyModifiers, RegionHotkeyVk);
+        set
+        {
+            RegionHotkeyModifiers = (uint)value.Modifiers;
+            RegionHotkeyVk = value.VirtualKey;
+        }
+    }
+
+    [JsonIgnore]
+    public Hotkey FullScreenHotkey
+    {
+        get => new((HotkeyModifiers)FullScreenHotkeyModifiers, FullScreenHotkeyVk);
+        set
+        {
+            FullScreenHotkeyModifiers = (uint)value.Modifiers;
+            FullScreenHotkeyVk = value.VirtualKey;
+        }
+    }
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Converters = { new JsonStringEnumConverter() }
     };
+
+    public static string ConfigPath { get; } = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "HDRSnip",
+        "config.json");
 
     public static AppConfig Load()
     {
@@ -65,35 +91,43 @@ public sealed class AppConfig
         {
             if (File.Exists(ConfigPath))
             {
-                var json = File.ReadAllText(ConfigPath);
-                var cfg = JsonSerializer.Deserialize<AppConfig>(json, JsonOptions) ?? new AppConfig();
-                Migrate(cfg);
-                return cfg;
+                var config = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ConfigPath), JsonOptions);
+                if (config is not null)
+                {
+                    config.Migrate();
+                    return config;
+                }
             }
         }
         catch
         {
-            // fall through to defaults
+            // A corrupt file should never stop the app starting.
         }
 
         return new AppConfig();
     }
 
-    private static void Migrate(AppConfig cfg)
-    {
-        // v2: notification-first capture (don't auto-open editor).
-        if (cfg.ConfigVersion < 2)
-        {
-            cfg.OpenEditorAfterCapture = false;
-            cfg.ConfigVersion = 2;
-            try { cfg.Save(); } catch { /* ignore */ }
-        }
-    }
-
     public void Save()
     {
-        var dir = Path.GetDirectoryName(ConfigPath)!;
-        Directory.CreateDirectory(dir);
-        File.WriteAllText(ConfigPath, JsonSerializer.Serialize(this, JsonOptions));
+        var directory = Path.GetDirectoryName(ConfigPath)!;
+        Directory.CreateDirectory(directory);
+
+        // Write-then-replace so a crash mid-write cannot leave an unreadable config.
+        var temporary = ConfigPath + ".tmp";
+        File.WriteAllText(temporary, JsonSerializer.Serialize(this, JsonOptions));
+        File.Move(temporary, ConfigPath, overwrite: true);
+    }
+
+    private void Migrate()
+    {
+        if (ConfigVersion >= CurrentVersion)
+            return;
+
+        // v2 moved to a notification-first flow rather than auto-opening the editor.
+        if (ConfigVersion < 2)
+            OpenEditorAfterCapture = false;
+
+        ConfigVersion = CurrentVersion;
+        try { Save(); } catch { /* settings still work in memory */ }
     }
 }

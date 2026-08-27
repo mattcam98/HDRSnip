@@ -1,0 +1,32 @@
+<Window x:Class="HDRSnip.Views.TrayHostWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:tb="http://www.hardcodet.net/taskbar"
+        Title="HDRSnip"
+        Width="0" Height="0"
+        WindowStyle="None"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Visibility="Hidden"
+        Opacity="0">
+
+  <!-- A zero-size hidden host: it exists only to own the tray icon and to give
+       RegisterHotKey a message loop to deliver WM_HOTKEY to. -->
+
+  <tb:TaskbarIcon x:Name="Tray"
+                  TrayMouseDoubleClick="OnTrayDoubleClick"
+                  MenuActivation="RightClick">
+    <tb:TaskbarIcon.ContextMenu>
+      <ContextMenu>
+        <MenuItem x:Name="RegionItem" Header="New snip" Click="OnNewSnip" />
+        <MenuItem x:Name="FullScreenItem" Header="Capture this screen" Click="OnFullScreen" />
+        <Separator />
+        <MenuItem Header="Open last capture" Click="OnOpenLast" x:Name="OpenLastItem" IsEnabled="False" />
+        <MenuItem Header="Open captures folder" Click="OnOpenFolder" />
+        <Separator />
+        <MenuItem Header="Settings" Click="OnSettings" />
+        <MenuItem Header="Exit" Click="OnExit" />
+      </ContextMenu>
+    </tb:TaskbarIcon.ContextMenu>
+  </tb:TaskbarIcon>
+</Window>

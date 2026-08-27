@@ -1,3 +1,5 @@
+using System.IO;
+using System.Reflection;
 using System.Windows;
 using HDRSnip.Models;
 using HDRSnip.Services;
@@ -14,12 +16,13 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _config = config;
 
+        SourceInitialized += (_, _) => ThemeService.ApplyToWindow(this);
+
         SaveFolderBox.Text = config.SaveFolder;
-        NitsSlider.Value = config.SdrWhiteNits;
-        CopyCheck.IsChecked = config.CopyToClipboard;
-        EditorCheck.IsChecked = config.OpenEditorAfterCapture;
-        AutoSaveCheck.IsChecked = config.AutoSave;
-        AutostartCheck.IsChecked = config.StartWithWindows || AutostartService.IsEnabled();
+        CopyToggle.IsChecked = config.CopyToClipboard;
+        AutoSaveToggle.IsChecked = config.AutoSave;
+        EditorToggle.IsChecked = config.OpenEditorAfterCapture;
+        AutostartToggle.IsChecked = config.StartWithWindows || AutostartService.IsEnabled();
 
         ToneMapBox.SelectedIndex = config.ToneMapMethod switch
         {
@@ -28,42 +31,75 @@ public partial class SettingsWindow : Window
             _ => 0
         };
 
-        HotkeyInfo.Text =
-            $"Rectangular: {HotkeyText.Format(config.RegionHotkeyModifiers, config.RegionHotkeyVk)}\n" +
-            $"Fullscreen: {HotkeyText.Format(config.FullScreenHotkeyModifiers, config.FullScreenHotkeyVk)}";
+        NitsSlider.Value = config.SdrWhiteNits;
+        NitsLabel.Text = $"{(int)config.SdrWhiteNits} nits";
+
+        RegionHotkey.Hotkey = config.RegionHotkey;
+        FullScreenHotkey.Hotkey = config.FullScreenHotkey;
+
+        var version = Assembly.GetExecutingAssembly().GetName().Version;
+        VersionLabel.Text = $"HDRSnip {version?.ToString(3) ?? "1.0.0"}";
     }
 
     private void OnNitsChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (NitsLabel is not null)
-            NitsLabel.Text = $"{(int)e.NewValue}";
+            NitsLabel.Text = $"{(int)e.NewValue} nits";
+    }
+
+    /// <summary>SDR white only affects the Windows curve; the others derive exposure from the frame.</summary>
+    private void OnCurveChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (NitsRow is not null)
+            NitsRow.IsEnabled = ToneMapBox.SelectedIndex == 0;
     }
 
     private void OnBrowse(object sender, RoutedEventArgs e)
     {
-        var dlg = new OpenFolderDialog { Title = "Screenshot save folder" };
-        if (dlg.ShowDialog(this) == true)
-            SaveFolderBox.Text = dlg.FolderName;
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose where captures are saved",
+            InitialDirectory = Directory.Exists(SaveFolderBox.Text) ? SaveFolderBox.Text : null
+        };
+
+        if (dialog.ShowDialog(this) == true)
+            SaveFolderBox.Text = dialog.FolderName;
     }
 
     private void OnCancel(object sender, RoutedEventArgs e) => Close();
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
-        _config.SaveFolder = SaveFolderBox.Text.Trim();
+        var folder = SaveFolderBox.Text.Trim();
+        if (folder.Length == 0)
+            folder = new AppConfig().SaveFolder;
+
+        _config.SaveFolder = folder;
+        _config.CopyToClipboard = CopyToggle.IsChecked == true;
+        _config.AutoSave = AutoSaveToggle.IsChecked == true;
+        _config.OpenEditorAfterCapture = EditorToggle.IsChecked == true;
+        _config.StartWithWindows = AutostartToggle.IsChecked == true;
         _config.SdrWhiteNits = NitsSlider.Value;
-        _config.CopyToClipboard = CopyCheck.IsChecked == true;
-        _config.OpenEditorAfterCapture = EditorCheck.IsChecked == true;
-        _config.AutoSave = AutoSaveCheck.IsChecked == true;
-        _config.StartWithWindows = AutostartCheck.IsChecked == true;
         _config.ToneMapMethod = ToneMapBox.SelectedIndex switch
         {
             1 => ToneMapMethod.Aces,
             2 => ToneMapMethod.Reinhard,
             _ => ToneMapMethod.Windows
         };
+        _config.RegionHotkey = RegionHotkey.Hotkey;
+        _config.FullScreenHotkey = FullScreenHotkey.Hotkey;
 
-        _config.Save();
+        try
+        {
+            _config.Save();
+        }
+        catch (Exception ex)
+        {
+            App.LogError("SaveSettings", ex);
+            MessageBox.Show($"Settings could not be written to disk.\n\n{ex.Message}",
+                "HDRSnip", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
         AutostartService.SetEnabled(_config.StartWithWindows);
         DialogResult = true;
         Close();

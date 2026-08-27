@@ -1,13 +1,16 @@
+# Build output
 bin/
 obj/
+artifacts/
+publish/
+
+# IDE
 .vs/
+.idea/
 *.user
 *.suo
 *.DotSettings.user
-publish/
-artifacts/
-*.png
-!docs/**
-!HDRSnip/Assets/logo.png
-!packaging/Images/*.png
+
+# OS
 .DS_Store
+Thumbs.db

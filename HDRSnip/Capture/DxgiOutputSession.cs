@@ -1,6 +1,6 @@
 using System.Diagnostics;
-using System.Drawing;
 using System.Runtime.InteropServices;
+using HDRSnip.Interop;
 using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
@@ -10,8 +10,10 @@ using MapFlags = Vortice.Direct3D11.MapFlags;
 namespace HDRSnip.Capture;
 
 /// <summary>
-/// Long-lived DXGI duplication session for one monitor.
-/// Reuses D3D device + DuplicateOutput1 instead of recreating every snip.
+/// Long-lived DXGI duplication session for one monitor. The D3D device, the
+/// duplication and the staging texture are all reused across snips — recreating
+/// them costs hundreds of milliseconds and is the difference between a snip that
+/// feels instant and one that stutters.
 /// </summary>
 public sealed class DxgiOutputSession : IDisposable
 {
@@ -33,8 +35,9 @@ public sealed class DxgiOutputSession : IDisposable
     private ID3D11DeviceContext? _context;
     private IDXGIOutputDuplication? _duplication;
     private ID3D11Texture2D? _staging;
+
     private bool _haveDesktopImage;
-    private float[]? _lastPixels;
+    private Half[]? _lastPixels;
     private int _lastWidth;
     private int _lastHeight;
     private bool _lastWasHdr;
@@ -71,6 +74,7 @@ public sealed class DxgiOutputSession : IDisposable
             {
                 if (result.Code == DxgiErrorWaitTimeout)
                 {
+                    // A static desktop produces no presents; the cached image is current.
                     if (_haveDesktopImage && _lastPixels is not null)
                         return FrameFromCache();
 
@@ -109,10 +113,10 @@ public sealed class DxgiOutputSession : IDisposable
                 resource = null;
 
                 var mapped = _context.Map(_staging!, 0, MapMode.Read, MapFlags.None);
-                float[] pixels;
+                Half[] pixels;
                 try
                 {
-                    pixels = DxgiHdrCapture.ReadFp16RgbaPublic(mapped, width, height);
+                    pixels = ReadStaging(mapped, width, height);
                 }
                 finally
                 {
@@ -121,9 +125,10 @@ public sealed class DxgiOutputSession : IDisposable
 
                 if (IsLikelyBlank(pixels))
                 {
-                    // Warm session went black (typical after sleep without ACCESS_LOST):
-                    // the duplication surface is dead — recreate and wait for a real present.
-                    // Fresh session: DWM can flash a black present on resume; skip a few.
+                    // A warm session that goes black has a dead duplication surface
+                    // (typical after sleep without ACCESS_LOST): rebuild it. A fresh
+                    // session may just be seeing DWM's black present on resume, so
+                    // skip a few before giving up on it.
                     if (_haveDesktopImage)
                     {
                         ResetSession();
@@ -134,7 +139,7 @@ public sealed class DxgiOutputSession : IDisposable
                         continue;
                 }
 
-                bool wasHdr = _monitor.IsHdr || DxgiHdrCapture.HasHdrValuesPublic(pixels);
+                bool wasHdr = _monitor.IsHdr || ToneMapper.HasHdrPeak(pixels);
                 _haveDesktopImage = true;
                 _lastPixels = pixels;
                 _lastWidth = width;
@@ -146,7 +151,7 @@ public sealed class DxgiOutputSession : IDisposable
             {
                 if (!released)
                 {
-                    try { _duplication?.ReleaseFrame(); } catch { /* ignore */ }
+                    try { _duplication?.ReleaseFrame(); } catch { /* already released */ }
                 }
 
                 resource?.Dispose();
@@ -156,13 +161,42 @@ public sealed class DxgiOutputSession : IDisposable
         if (_haveDesktopImage && _lastPixels is not null)
             return FrameFromCache();
 
-        throw new InvalidOperationException("Timed out waiting for desktop frame.");
+        throw new InvalidOperationException("Timed out waiting for a desktop frame.");
+    }
+
+    /// <summary>
+    /// Copies the staging texture row by row. The source is already
+    /// R16G16B16A16_FLOAT, so each row is a straight memcpy — no per-sample
+    /// conversion, which is what keeps a 4K grab in single-digit milliseconds.
+    /// </summary>
+    private static unsafe Half[] ReadStaging(MappedSubresource mapped, int width, int height)
+    {
+        var pixels = new Half[width * height * 4];
+        int rowBytes = width * 4 * sizeof(ushort);
+        int rowPitch = (int)mapped.RowPitch;
+        byte* source = (byte*)mapped.DataPointer;
+
+        fixed (Half* destination = pixels)
+        {
+            if (rowPitch == rowBytes)
+            {
+                Buffer.MemoryCopy(source, destination, (long)rowBytes * height, (long)rowBytes * height);
+            }
+            else
+            {
+                byte* target = (byte*)destination;
+                for (int y = 0; y < height; y++)
+                    Buffer.MemoryCopy(source + (long)y * rowPitch, target + (long)y * rowBytes, rowBytes, rowBytes);
+            }
+        }
+
+        return pixels;
     }
 
     private CapturedFrame FrameFromCache() =>
         MakeFrame(_lastPixels!, _lastWidth, _lastHeight, _lastWasHdr);
 
-    private CapturedFrame MakeFrame(float[] pixels, int width, int height, bool wasHdr) =>
+    private CapturedFrame MakeFrame(Half[] pixels, int width, int height, bool wasHdr) =>
         new()
         {
             Width = width,
@@ -170,7 +204,7 @@ public sealed class DxgiOutputSession : IDisposable
             MonitorBounds = _monitor.Bounds,
             WasHdr = wasHdr,
             IsLinearScRgb = true,
-            RgbaLinear = pixels
+            Rgba = pixels
         };
 
     private void EnsureSession()
@@ -197,7 +231,7 @@ public sealed class DxgiOutputSession : IDisposable
             }
         }
 
-        throw last ?? new InvalidOperationException("Failed to create DXGI duplication session.");
+        throw last ?? new InvalidOperationException("Failed to create a DXGI duplication session.");
     }
 
     private bool HasLiveSession()
@@ -217,16 +251,16 @@ public sealed class DxgiOutputSession : IDisposable
     private void CreateSession()
     {
         using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-        if (!DxgiHdrCapture.TryGetAdapterOutputPublic(factory, _monitor.OutputIndex, out _adapter!, out _output!))
+        if (!DisplayEnumerator.TryGetOutput(factory, _monitor.OutputIndex, out _adapter!, out _output!))
             throw new InvalidOperationException($"Output {_monitor.OutputIndex} not found.");
 
-        var featureLevels = new[]
-        {
+        FeatureLevel[] featureLevels =
+        [
             FeatureLevel.Level_11_1,
             FeatureLevel.Level_11_0,
             FeatureLevel.Level_10_1,
             FeatureLevel.Level_10_0
-        };
+        ];
 
         D3D11.D3D11CreateDevice(
             _adapter,
@@ -238,23 +272,23 @@ public sealed class DxgiOutputSession : IDisposable
             out _context).CheckError();
 
         using var output5 = _output.QueryInterface<IDXGIOutput5>();
-        var formats = new[] { Format.R16G16B16A16_Float };
-        // Vortice overload is (device, supportedFormatsCount, formats) — NOT (device, flags, formats).
+        Format[] formats = [Format.R16G16B16A16_Float];
+        // Vortice's overload is (device, supportedFormatsCount, formats) — not (device, flags, formats).
         _duplication = output5.DuplicateOutput1(_device, (uint)formats.Length, formats);
     }
 
-    private void EnsureStaging(Texture2DDescription srcDesc)
+    private void EnsureStaging(Texture2DDescription source)
     {
         if (_staging is not null &&
-            _staging.Description.Width == srcDesc.Width &&
-            _staging.Description.Height == srcDesc.Height)
+            _staging.Description.Width == source.Width &&
+            _staging.Description.Height == source.Height)
             return;
 
         DisposeQuiet(ref _staging);
         _staging = _device!.CreateTexture2D(new Texture2DDescription
         {
-            Width = srcDesc.Width,
-            Height = srcDesc.Height,
+            Width = source.Width,
+            Height = source.Height,
             MipLevels = 1,
             ArraySize = 1,
             Format = Format.R16G16B16A16_Float,
@@ -293,28 +327,32 @@ public sealed class DxgiOutputSession : IDisposable
             or DxgiErrorSessionDisconnected
             or DxgiErrorAccessDenied;
 
-    private static bool IsLikelyBlank(float[] rgba)
+    /// <summary>Bit pattern of the near-black threshold. Positive halves compare
+    /// monotonically as integers, so masking the sign turns this into abs(v) &gt; 1e-3.</summary>
+    private static readonly ushort BlankThresholdBits = BitConverter.HalfToUInt16Bits((Half)1e-3f);
+
+    private static bool IsLikelyBlank(Half[] pixels)
     {
-        for (int i = 0; i < rgba.Length; i += 4)
+        var bits = MemoryMarshal.Cast<Half, ushort>(pixels);
+        for (int i = 0; i < bits.Length; i += 4)
         {
-            if (rgba[i] > 1e-3f || rgba[i + 1] > 1e-3f || rgba[i + 2] > 1e-3f)
+            if ((bits[i] & 0x7FFF) > BlankThresholdBits ||
+                (bits[i + 1] & 0x7FFF) > BlankThresholdBits ||
+                (bits[i + 2] & 0x7FFF) > BlankThresholdBits)
                 return false;
         }
 
         return true;
     }
 
-    private static void DisposeQuiet<T>(ref T? obj) where T : class, IDisposable
+    private static void DisposeQuiet<T>(ref T? value) where T : class, IDisposable
     {
-        try { obj?.Dispose(); } catch { /* ignore */ }
-        obj = null;
+        try { value?.Dispose(); } catch { /* teardown must not throw */ }
+        value = null;
     }
 
     private static void TryDwmFlush()
     {
-        try { _ = DwmFlush(); } catch { /* ignore */ }
+        try { _ = Native.DwmFlush(); } catch { /* best effort */ }
     }
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmFlush();
 }

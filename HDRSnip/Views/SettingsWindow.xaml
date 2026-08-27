@@ -1,55 +1,157 @@
 <Window x:Class="HDRSnip.Views.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="HDRSnip Settings"
-        Width="480"
-        Height="560"
-        ResizeMode="NoResize"
+        xmlns:controls="clr-namespace:HDRSnip.Controls"
+        Title="HDRSnip settings"
+        Width="560" Height="720"
+        MinWidth="520" MinHeight="480"
         WindowStartupLocation="CenterScreen"
-        Background="#FF1A1A1A">
-  <ScrollViewer Padding="20" VerticalScrollBarVisibility="Auto">
-    <StackPanel>
-      <TextBlock Text="HDRSnip" FontSize="20" FontFamily="Segoe UI Semibold" Foreground="White" Margin="0,0,0,4" />
-      <TextBlock Text="HDR-aware snipping tool" Foreground="#FF888888" Margin="0,0,0,20" />
+        Background="{DynamicResource Surface.Base}"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Ideal">
 
-      <TextBlock Text="Save folder" Style="{StaticResource FieldLabel}" />
-      <DockPanel Margin="0,0,0,14">
-        <Button DockPanel.Dock="Right" Content="Browse…" Style="{StaticResource ActionBtn}" Click="OnBrowse" Margin="8,0,0,0" />
-        <TextBox x:Name="SaveFolderBox" Style="{StaticResource FieldBox}" />
+  <Window.Resources>
+    <!-- Section heading above each card. -->
+    <Style x:Key="SectionHeading" TargetType="TextBlock" BasedOn="{StaticResource Type.Subtitle}">
+      <Setter Property="Margin" Value="2,0,0,8" />
+    </Style>
+    <Style x:Key="Row" TargetType="StackPanel">
+      <Setter Property="Margin" Value="0,0,0,16" />
+    </Style>
+  </Window.Resources>
+
+  <DockPanel>
+
+    <!-- Footer stays pinned so Save is always reachable. -->
+    <Border DockPanel.Dock="Bottom"
+            Background="{DynamicResource Surface.Layer}"
+            BorderBrush="{DynamicResource Stroke.Subtle}"
+            BorderThickness="0,1,0,0"
+            Padding="20,14">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Left"
+                   x:Name="VersionLabel"
+                   Style="{StaticResource Type.Caption}"
+                   VerticalAlignment="Center" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button Content="Cancel" Style="{StaticResource Button.Standard}" Click="OnCancel" Margin="0,0,8,0" IsCancel="True" />
+          <Button Content="Save" Style="{StaticResource Button.Accent}" Click="OnSave" IsDefault="True" />
+        </StackPanel>
       </DockPanel>
+    </Border>
 
-      <TextBlock Text="Tone mapping" Style="{StaticResource FieldLabel}" />
-      <ComboBox x:Name="ToneMapBox" Style="{StaticResource FieldCombo}" Margin="0,0,0,14">
-        <ComboBoxItem Content="Windows / OBS (recommended)" Tag="Windows" />
-        <ComboBoxItem Content="ACES filmic" Tag="Aces" />
-        <ComboBoxItem Content="Reinhard" Tag="Reinhard" />
-      </ComboBox>
+    <ScrollViewer Padding="20,20,14,20" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
 
-      <TextBlock Text="SDR white (nits)" Style="{StaticResource FieldLabel}" />
-      <DockPanel Margin="0,0,0,4">
-        <TextBlock x:Name="NitsLabel" DockPanel.Dock="Right" Foreground="#FF4CC2FF" Width="48" TextAlignment="Right" VerticalAlignment="Center" />
-        <Slider x:Name="NitsSlider" Minimum="160" Maximum="480" TickFrequency="10" IsSnapToTickEnabled="True"
-                ValueChanged="OnNitsChanged" />
-      </DockPanel>
-      <TextBlock Text="Higher = darker screenshots. Try 200–280 if text still looks washed out."
-                 Foreground="#FF777777" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,14" />
+        <!-- ============================================== Capture -->
+        <TextBlock Text="Capture" Style="{StaticResource SectionHeading}" />
+        <Border Style="{StaticResource Card}" Margin="0,0,0,20">
+          <StackPanel>
+            <StackPanel Style="{StaticResource Row}">
+              <TextBlock Text="Save folder" Style="{StaticResource Type.Body}" Margin="0,0,0,6" />
+              <DockPanel>
+                <Button DockPanel.Dock="Right"
+                        Content="Browse…"
+                        Style="{StaticResource Button.Standard}"
+                        Click="OnBrowse"
+                        MinWidth="0"
+                        Padding="12,7"
+                        Margin="8,0,0,0" />
+                <TextBox x:Name="SaveFolderBox" Style="{StaticResource Field.TextBox}" />
+              </DockPanel>
+            </StackPanel>
 
-      <CheckBox x:Name="CopyCheck" Content="Copy to clipboard after capture" Style="{StaticResource FieldCheck}" />
-      <CheckBox x:Name="EditorCheck" Content="Open editor immediately (skip notification)" Style="{StaticResource FieldCheck}" />
-      <TextBlock Text="By default a toast appears — click it to open the editor. Screenshots are still copied automatically."
-                 Foreground="#FF777777" FontSize="11" TextWrapping="Wrap" Margin="0,-4,0,10" />
-      <CheckBox x:Name="AutoSaveCheck" Content="Auto-save PNG on capture" Style="{StaticResource FieldCheck}" />
-      <CheckBox x:Name="AutostartCheck" Content="Start with Windows" Style="{StaticResource FieldCheck}" Margin="0,0,0,18" />
+            <CheckBox x:Name="CopyToggle"
+                      Style="{StaticResource Field.Toggle}"
+                      Content="Copy to clipboard after capture"
+                      Margin="0,0,0,14" />
 
-      <TextBlock Text="Hotkeys" Style="{StaticResource FieldLabel}" />
-      <TextBlock x:Name="HotkeyInfo" Foreground="#FFAAAAAA" FontSize="12" Margin="0,0,0,6" TextWrapping="Wrap" />
-      <TextBlock Text="Change hotkeys by editing %LOCALAPPDATA%\HDRSnip\config.json (modifiers: Alt=1 Ctrl=2 Shift=4 Win=8)."
-                 Foreground="#FF666666" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,20" />
+            <CheckBox x:Name="AutoSaveToggle"
+                      Style="{StaticResource Field.Toggle}"
+                      Content="Also save a PNG automatically"
+                      Margin="0,0,0,14" />
 
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-        <Button Content="Cancel" Style="{StaticResource ActionBtn}" Click="OnCancel" Margin="0,0,8,0" />
-        <Button Content="Save" Style="{StaticResource PrimaryBtn}" Click="OnSave" />
+            <CheckBox x:Name="EditorToggle"
+                      Style="{StaticResource Field.Toggle}"
+                      Content="Open the editor instead of showing a toast"
+                      Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Type.Caption}"
+                       Text="By default a notification appears; clicking it opens the editor. Either way the capture is already on the clipboard." />
+          </StackPanel>
+        </Border>
+
+        <!-- ============================================== Tone mapping -->
+        <TextBlock Text="HDR tone mapping" Style="{StaticResource SectionHeading}" />
+        <Border Style="{StaticResource Card}" Margin="0,0,0,20">
+          <StackPanel>
+            <StackPanel Style="{StaticResource Row}">
+              <TextBlock Text="Curve" Style="{StaticResource Type.Body}" Margin="0,0,0,6" />
+              <ComboBox x:Name="ToneMapBox" Style="{StaticResource Field.ComboBox}" SelectionChanged="OnCurveChanged">
+                <ComboBoxItem Content="Windows / OBS — best for UI and text" />
+                <ComboBoxItem Content="ACES filmic — best for games and video" />
+                <ComboBoxItem Content="Reinhard — softest highlight rolloff" />
+              </ComboBox>
+            </StackPanel>
+
+            <StackPanel x:Name="NitsRow">
+              <DockPanel Margin="0,0,0,2">
+                <TextBlock Text="SDR white level" Style="{StaticResource Type.Body}" />
+                <TextBlock x:Name="NitsLabel"
+                           Style="{StaticResource Type.Body}"
+                           Foreground="{DynamicResource Accent.Default}"
+                           HorizontalAlignment="Right"
+                           TextAlignment="Right"
+                           MinWidth="64" />
+              </DockPanel>
+              <Slider x:Name="NitsSlider"
+                      Style="{StaticResource Field.Slider}"
+                      Minimum="120" Maximum="480"
+                      TickFrequency="10"
+                      IsSnapToTickEnabled="True"
+                      ValueChanged="OnNitsChanged" />
+              <TextBlock Style="{StaticResource Type.Caption}"
+                         Text="Higher values darken the result. Match this to the SDR content brightness slider in Windows HDR settings — 240–280 suits most displays." />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- ============================================== Hotkeys -->
+        <TextBlock Text="Hotkeys" Style="{StaticResource SectionHeading}" />
+        <Border Style="{StaticResource Card}" Margin="0,0,0,20">
+          <StackPanel>
+            <DockPanel Margin="0,0,0,12">
+              <TextBlock Text="Region snip" Style="{StaticResource Type.Body}" VerticalAlignment="Center" />
+              <controls:HotkeyBox x:Name="RegionHotkey"
+                                  Style="{StaticResource Button.Standard}"
+                                  HorizontalAlignment="Right"
+                                  MinWidth="180" />
+            </DockPanel>
+            <DockPanel Margin="0,0,0,10">
+              <TextBlock Text="Full screen" Style="{StaticResource Type.Body}" VerticalAlignment="Center" />
+              <controls:HotkeyBox x:Name="FullScreenHotkey"
+                                  Style="{StaticResource Button.Standard}"
+                                  HorizontalAlignment="Right"
+                                  MinWidth="180" />
+            </DockPanel>
+            <TextBlock Style="{StaticResource Type.Caption}"
+                       Text="Click a hotkey then press the combination you want. Backspace clears it, Esc keeps the current one. Win+Shift+S is reserved by Windows and cannot be claimed." />
+          </StackPanel>
+        </Border>
+
+        <!-- ============================================== System -->
+        <TextBlock Text="System" Style="{StaticResource SectionHeading}" />
+        <Border Style="{StaticResource Card}">
+          <StackPanel>
+            <CheckBox x:Name="AutostartToggle"
+                      Style="{StaticResource Field.Toggle}"
+                      Content="Start HDRSnip when I sign in"
+                      Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Type.Caption}"
+                       Text="HDRSnip lives in the notification area and uses no CPU while idle." />
+          </StackPanel>
+        </Border>
+
       </StackPanel>
-    </StackPanel>
-  </ScrollViewer>
+    </ScrollViewer>
+  </DockPanel>
 </Window>

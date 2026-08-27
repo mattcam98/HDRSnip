@@ -1,19 +1,22 @@
 namespace HDRSnip.Capture;
 
-/// <summary>Process-wide capture host owned by the tray app.</summary>
+/// <summary>Owns the single capture daemon shared by the whole tray process.</summary>
 public static class CaptureHost
 {
     public static CaptureDaemonClient? Daemon { get; private set; }
 
+    /// <summary>
+    /// Warms the daemon on a background thread. Paying the DXGI device and
+    /// duplication setup at launch is what makes the first snip feel as fast as
+    /// the tenth.
+    /// </summary>
     public static void Start()
     {
-        Daemon ??= new CaptureDaemonClient();
-        // Warm the daemon off the UI thread so startup never blocks on DXGI/pipe.
-        var client = Daemon;
+        var client = Daemon ??= new CaptureDaemonClient();
         _ = Task.Run(() =>
         {
             try { client.EnsureStarted(); }
-            catch (Exception ex) { App.LogCrash("CaptureHost.Start", ex); }
+            catch (Exception ex) { App.LogError("CaptureHost", ex); }
         });
     }
 

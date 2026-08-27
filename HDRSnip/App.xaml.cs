@@ -1,26 +1,28 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
-using System.Threading;
 using System.Windows;
 using HDRSnip.Capture;
 using HDRSnip.Models;
 using HDRSnip.Services;
+using HDRSnip.Views;
 
 namespace HDRSnip;
 
-public partial class App : System.Windows.Application
+public partial class App : Application
 {
+    private const string SingleInstanceMutex = @"Local\HDRSnip.SingleInstance";
+
     public static AppConfig Config { get; private set; } = null!;
-    private static Mutex? _mutex;
-    private static bool _ownsMutex;
+
+    private Mutex? _instanceLock;
+    private bool _ownsInstanceLock;
 
     [STAThread]
     public static void Main(string[] args)
     {
-        // Capture processes must run before WPF Application / tray mutex.
+        // The capture daemon is this same executable relaunched with a flag. It
+        // must short-circuit before any WPF or single-instance machinery runs.
         if (CaptureDaemon.TryRun(args))
-            return;
-        if (CaptureWorker.TryRunAsWorker(args))
             return;
 
         var app = new App();
@@ -30,94 +32,98 @@ public partial class App : System.Windows.Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
-        DispatcherUnhandledException += (_, args) =>
-        {
-            LogCrash("Dispatcher", args.Exception);
-            args.Handled = true;
-            try
-            {
-                MessageBox.Show(
-                    $"HDRSnip hit an error but stayed running:\n{args.Exception.Message}",
-                    "HDRSnip", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-            catch { /* ignore */ }
-        };
-        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
-        {
-            if (args.ExceptionObject is Exception ex)
-                LogCrash("Unhandled", ex);
-        };
-        TaskScheduler.UnobservedTaskException += (_, args) =>
-        {
-            LogCrash("Task", args.Exception);
-            args.SetObserved();
-        };
-
+        InstallErrorHandlers();
         base.OnStartup(e);
 
-        if (e.Args.Any(a => a.Equals("--export-store-assets", StringComparison.OrdinalIgnoreCase)))
+        _instanceLock = new Mutex(true, SingleInstanceMutex, out _ownsInstanceLock);
+        if (!_ownsInstanceLock)
         {
-            Config = AppConfig.Load();
-            var fromProject = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "artifacts", "store-listing"));
-            try { Directory.CreateDirectory(fromProject); }
-            catch { fromProject = Path.Combine(Path.GetTempPath(), "HDRSnip-store-listing"); Directory.CreateDirectory(fromProject); }
-
-            Dispatcher.BeginInvoke(() =>
-            {
-                try { StoreAssetExporter.Export(fromProject); }
-                catch (Exception ex) { MessageBox.Show(ex.ToString(), "Export failed"); }
-                finally { Shutdown(); }
-            });
-            return;
-        }
-
-        _mutex = new Mutex(true, @"Local\HDRSnip.SingleInstance", out _ownsMutex);
-        if (!_ownsMutex)
-        {
-            MessageBox.Show("HDRSnip is already running (check the system tray).", "HDRSnip",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(
+                "HDRSnip is already running — look for it in the system tray.",
+                "HDRSnip", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
         }
 
-        ToastNotificationService.Initialize();
-
         Config = AppConfig.Load();
+        ThemeService.Initialize();
+        NotificationService.Initialize();
+
+        // Warm the capture daemon while the tray icon is being built.
         CaptureHost.Start();
-        var host = new MainWindow();
-        MainWindow = host;
-        host.Show();
+
+        var tray = new TrayHostWindow();
+        MainWindow = tray;
+        tray.Show();
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
         CaptureHost.Stop();
+        NotificationService.Shutdown();
+        ThemeService.Shutdown();
+
         try
         {
-            if (_ownsMutex)
-                _mutex?.ReleaseMutex();
+            if (_ownsInstanceLock)
+                _instanceLock?.ReleaseMutex();
         }
         catch (ApplicationException)
         {
-            // Mutex was not owned on this thread — ignore.
+            // Not owned on this thread — nothing to release.
         }
 
-        _mutex?.Dispose();
+        _instanceLock?.Dispose();
         base.OnExit(e);
     }
 
-    internal static void LogCrash(string source, Exception ex)
+    private void InstallErrorHandlers()
+    {
+        // A tray utility should survive a bad frame, not vanish from the notification area.
+        DispatcherUnhandledException += (_, args) =>
+        {
+            LogError("Dispatcher", args.Exception);
+            args.Handled = true;
+            ShowError(args.Exception);
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            if (args.ExceptionObject is Exception ex)
+                LogError("Unhandled", ex);
+        };
+
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            LogError("Task", args.Exception);
+            args.SetObserved();
+        };
+    }
+
+    private static void ShowError(Exception ex)
     {
         try
         {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "HDRSnip");
-            Directory.CreateDirectory(dir);
-            var line = $"[{DateTime.Now:o}] {source}: {ex}\n";
-            File.AppendAllText(Path.Combine(dir, "errors.log"), line);
-            Debug.WriteLine(line);
+            MessageBox.Show(
+                $"HDRSnip hit an error but is still running.\n\n{ex.Message}",
+                "HDRSnip", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        catch { /* ignore */ }
+        catch { /* the UI itself is unhappy; the log already has it */ }
+    }
+
+    /// <summary>Appends to %LOCALAPPDATA%\HDRSnip\errors.log. Never throws.</summary>
+    public static void LogError(string source, Exception ex)
+    {
+        try
+        {
+            var directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HDRSnip");
+            Directory.CreateDirectory(directory);
+
+            var entry = $"[{DateTime.Now:o}] {source}: {ex}\n";
+            File.AppendAllText(Path.Combine(directory, "errors.log"), entry);
+            Debug.WriteLine(entry);
+        }
+        catch { /* logging must never be the thing that breaks */ }
     }
 }

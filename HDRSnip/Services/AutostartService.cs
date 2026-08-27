@@ -3,32 +3,48 @@ using Microsoft.Win32;
 
 namespace HDRSnip.Services;
 
+/// <summary>Start-with-Windows via the per-user Run key. Never needs elevation.</summary>
 public static class AutostartService
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ValueName = "HDRSnip";
 
-    public static void SetEnabled(bool enabled)
+    public static bool IsEnabled()
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true)
-                        ?? Registry.CurrentUser.CreateSubKey(RunKey);
-
-        if (enabled)
+        try
         {
-            var exe = Environment.ProcessPath;
-            if (string.IsNullOrEmpty(exe))
-                exe = Path.Combine(AppContext.BaseDirectory, "HDRSnip.exe");
-            key.SetValue(ValueName, $"\"{exe}\"");
+            using var key = Registry.CurrentUser.OpenSubKey(RunKey);
+            return key?.GetValue(ValueName) is not null;
         }
-        else
+        catch
         {
-            key.DeleteValue(ValueName, throwOnMissingValue: false);
+            return false;
         }
     }
 
-    public static bool IsEnabled()
+    public static void SetEnabled(bool enabled)
     {
-        using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: false);
-        return key?.GetValue(ValueName) is not null;
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(RunKey, writable: true);
+            if (key is null)
+                return;
+
+            if (enabled)
+            {
+                var executable = Environment.ProcessPath;
+                if (string.IsNullOrEmpty(executable))
+                    executable = Path.Combine(AppContext.BaseDirectory, "HDRSnip.exe");
+                key.SetValue(ValueName, $"\"{executable}\"");
+            }
+            else
+            {
+                key.DeleteValue(ValueName, throwOnMissingValue: false);
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogError("Autostart", ex);
+        }
     }
 }

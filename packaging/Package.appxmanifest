@@ -7,17 +7,19 @@
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   IgnorableNamespaces="uap rescap desktop com">
 
-  <!-- Identity MUST match Partner Center → Product identity exactly -->
+  <!-- Identity must match Partner Center > Product management > Product identity
+       exactly. build.ps1 stamps Version from Directory.Build.props at pack time. -->
   <Identity
     Name="HDRSnipOpenSource.HDRSnip"
     Publisher="CN=9F23CC6F-12A3-4502-9862-2F838EDA17E4"
-    Version="1.0.0.0" />
+    Version="1.1.0.0"
+    ProcessorArchitecture="x64" />
 
   <Properties>
     <DisplayName>HDRSnip</DisplayName>
     <PublisherDisplayName>HDRSnip Open Source</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
-    <Description>HDR-aware snipping tool — correct screenshots when Windows HDR is on.</Description>
+    <Description>HDR-aware snipping tool. Screenshots that stay sharp when Windows HDR is on.</Description>
   </Properties>
 
   <Dependencies>
@@ -39,19 +41,21 @@
         Square150x150Logo="Images\Square150x150Logo.png"
         Square44x44Logo="Images\Square44x44Logo.png">
         <uap:DefaultTile Wide310x150Logo="Images\Wide310x150Logo.png"
-                        Square71x71Logo="Images\Square71x71Logo.png"
-                        Square310x310Logo="Images\Square310x310Logo.png" />
-        <uap:SplashScreen Image="Images\SplashScreen.png" BackgroundColor="#1A1A1A" />
+                         Square71x71Logo="Images\Square71x71Logo.png"
+                         Square310x310Logo="Images\Square310x310Logo.png" />
+        <uap:SplashScreen Image="Images\SplashScreen.png" BackgroundColor="#17171B" />
       </uap:VisualElements>
 
       <Extensions>
+        <!-- Lets a click on the capture toast reactivate the running tray app.
+             The CLSID is arbitrary but must match on both extensions. -->
         <desktop:Extension Category="windows.toastNotificationActivation">
-          <desktop:ToastNotificationActivation ToastActivatorCLSID="A1B2C3D4-E5F6-7890-ABCD-EF1234567890" />
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="6F2E1C84-9B37-4A5E-B1D2-7C4A8E05F913" />
         </desktop:Extension>
         <com:Extension Category="windows.comServer">
           <com:ComServer>
             <com:ExeServer Executable="HDRSnip\HDRSnip.exe" Arguments="-ToastActivated" DisplayName="HDRSnip">
-              <com:Class Id="A1B2C3D4-E5F6-7890-ABCD-EF1234567890" DisplayName="HDRSnip Toast Activator" />
+              <com:Class Id="6F2E1C84-9B37-4A5E-B1D2-7C4A8E05F913" DisplayName="HDRSnip Toast Activator" />
             </com:ExeServer>
           </com:ComServer>
         </com:Extension>
@@ -60,6 +64,8 @@
   </Applications>
 
   <Capabilities>
+    <!-- Required for every Win32 desktop app packaged with MSIX. HDRSnip uses it
+         for DXGI Desktop Duplication, global hotkeys and clipboard access only. -->
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
 </Package>

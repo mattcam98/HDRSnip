@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="HDRSnip">
+  <defs>
+    <linearGradient id="ramp" gradientUnits="userSpaceOnUse" x1="128" y1="128" x2="896" y2="896">
+      <stop offset="0" stop-color="4CC2FF" />
+      <stop offset="1" stop-color="A855F7" />
+    </linearGradient>
+    <linearGradient id="core" gradientUnits="userSpaceOnUse" x1="348" y1="348" x2="676" y2="676">
+      <stop offset="0" stop-color="4CC2FF" />
+      <stop offset="1" stop-color="A855F7" />
+    </linearGradient>
+    <linearGradient id="clipped" gradientUnits="userSpaceOnUse" x1="348" y1="676" x2="676" y2="348">
+      <stop offset="0" stop-color="41506E" />
+      <stop offset="1" stop-color="5C6E92" />
+    </linearGradient>
+    <clipPath id="hdrHalf"><path d="M 526.142135623731,497.857864376269 L 1726.14213562373,1697.85786437627 L 1726.14213562373,-702.142135623731 Z" /></clipPath>
+    <clipPath id="sdrHalf"><path d="M 497.857864376269,526.142135623731 L 1697.85786437627,1726.14213562373 L -702.142135623731,1726.14213562373 Z" /></clipPath>
+  </defs>
+  <g fill="none" stroke="url(#ramp)" stroke-width="60" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M 352,128 L 224,128 A 96,96 0 0 0 128,224 L 128,352" />
+  <path d="M 672,128 L 800,128 A 96,96 0 0 1 896,224 L 896,352" />
+  <path d="M 896,672 L 896,800 A 96,96 0 0 1 800,896 L 672,896" />
+  <path d="M 352,896 L 224,896 A 96,96 0 0 1 128,800 L 128,672" />
+  </g>
+  <rect x="348" y="348" width="328" height="328" rx="68" ry="68" fill="url(#clipped)" clip-path="url(#sdrHalf)" />
+  <rect x="348" y="348" width="328" height="328" rx="68" ry="68" fill="url(#core)" clip-path="url(#hdrHalf)" />
+</svg>

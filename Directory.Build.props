@@ -1,0 +1,30 @@
+<Project>
+
+  <!--
+    Single source of truth for product identity and versioning.
+    build.ps1 reads <Version> from here and stamps packaging/Package.appxmanifest,
+    so the app, the assembly and the MSIX can never drift apart.
+  -->
+  <PropertyGroup Label="Identity">
+    <Product>HDRSnip</Product>
+    <Company>HDRSnip Open Source</Company>
+    <Authors>HDRSnip contributors</Authors>
+    <Copyright>Copyright (c) 2026 HDRSnip contributors</Copyright>
+    <Description>HDR-aware snipping tool for Windows. Captures the desktop in FP16 scRGB and tone-maps to SDR so screenshots stay sharp when HDR is on.</Description>
+    <Version>1.1.0</Version>
+    <PackageProjectUrl>https://github.com/mattcam98/HDRSnip</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/mattcam98/HDRSnip.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Language">
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+
+</Project>

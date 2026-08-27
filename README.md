@@ -1,105 +1,161 @@
-# HDRSnip
-
 <p align="center">
-  <img src="HDRSnip/Assets/logo.png" alt="HDRSnip logo" width="128" />
+  <img src="docs/assets/logo.png" alt="HDRSnip" width="112" height="112" />
 </p>
 
-Open-source **HDR-aware snipping tool** for Windows 10/11. Captures the desktop in FP16 scRGB via DXGI Desktop Duplication, tone-maps to SDR (Windows/OBS-style), and mirrors the Snipping Tool workflow: floating mode bar, rectangular region select, clipboard + editor.
+<h1 align="center">HDRSnip</h1>
 
-## Why
+<p align="center">
+  <strong>Screenshots that stay sharp when Windows HDR is on.</strong><br />
+  A tray-resident snipping tool that captures in FP16 scRGB and tone-maps properly.
+</p>
 
-With HDR enabled, Snipping Tool / Print Screen often produce washed-out, overexposed screenshots because they read an 8-bit SDR view of an HDR framebuffer. HDRSnip keeps the full float range and applies proper HDR→SDR tone mapping so UI text stays readable.
+<p align="center">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-4CC2FF?style=flat-square" /></a>
+  <img alt="Windows 10 1809+" src="https://img.shields.io/badge/Windows-10%201809%2B-A855F7?style=flat-square" />
+  <img alt=".NET 8" src="https://img.shields.io/badge/.NET-8.0-4CC2FF?style=flat-square" />
+</p>
+
+---
+
+## The problem
+
+With HDR enabled, the built-in Snipping Tool and Print Screen read an 8-bit SDR view
+of a floating-point HDR framebuffer. The result is washed out, blown out, or both —
+text loses contrast and colours shift.
+
+HDRSnip duplicates the desktop in `R16G16B16A16_FLOAT`, keeps the full float range
+through cropping, and applies a real HDR→SDR transfer at the end. What you paste
+looks like what you saw.
 
 ## Features
 
-- Rectangular snip (frozen HDR-correct preview overlay)
-- Fullscreen / window (monitor under cursor)
-- Floating mode toolbar (Snipping Tool–style)
-- System tray app with global hotkeys
-- Tone mapping: **Windows/OBS** (default), ACES, Reinhard
-- Adjustable SDR white level (nits)
-- Copy to clipboard, optional auto-save PNG, post-capture editor
-- Multi-monitor aware
-- SDR GDI fallback when FP16 duplication is unavailable
+- **Region snip** over a frozen, HDR-correct preview of the monitor — what you drag is exactly what you get
+- **Full-screen snip** of the monitor under the cursor
+- **Three tone-mapping curves** — Windows/OBS (default, best for UI and text), ACES filmic, Reinhard
+- **Adjustable SDR white level** to match your display's HDR settings
+- **Global hotkeys**, recorded in-app — no config file editing
+- Copies to the clipboard as both DIB and lossless PNG
+- Toast notification, click to open the editor; or open the editor immediately
+- Editor with fit/actual-size zoom, copy, save, and save-as
+- Follows the Windows light/dark theme, live
+- Multi-monitor and per-monitor-DPI aware
+- GDI fallback where desktop duplication is unavailable (some VMs and remote sessions)
 
-## Requirements
+## Install
 
-- Windows 10 1703+ / Windows 11
-- [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) (or SDK to build)
-- GPU/driver supporting DXGI Desktop Duplication
-
-## Install (Start menu)
+**From source, into the Start menu:**
 
 ```powershell
-.\scripts\install-startmenu.ps1
+.\build.ps1 install
 ```
 
-Adds **HDRSnip** to your Start menu (and Desktop). No admin required. See [docs/DISTRIBUTION.md](docs/DISTRIBUTION.md) for uninstall and **Microsoft Store** publishing.
+Installs to `%LOCALAPPDATA%\Programs\HDRSnip` with a Start menu shortcut. No admin needed.
+Remove it again with `.\build.ps1 uninstall`.
 
-## Run from source
+**Portable single file:**
 
 ```powershell
-cd HDRSnip
-dotnet run
+.\build.ps1 portable
 ```
 
-## Build release exe
+Requirements: Windows 10 1809 or later. Building needs the
+[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0); the published app is
+self-contained and needs no runtime install.
 
-```powershell
-cd HDRSnip
-dotnet publish -c Release -r win-x64 --self-contained false -o ..\publish
-```
-
-Self-contained single-file (no runtime install needed):
-
-```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ..\publish
-```
-
-Run `..\publish\HDRSnip.exe`. The tray icon appears in the notification area.
-
-## Hotkeys (defaults)
+## Default hotkeys
 
 | Action | Hotkey |
-|--------|--------|
-| Rectangular snip | `Ctrl+Shift+S` |
-| Fullscreen snip | `Ctrl+Shift+PrintScreen` |
+|---|---|
+| Region snip | `Ctrl + Shift + S` |
+| Full screen | `Ctrl + Shift + Print Screen` |
 
-Tray → **New snip** opens the mode toolbar. Change hotkeys in `%LOCALAPPDATA%\HDRSnip\config.json` (modifiers: Alt=1, Ctrl=2, Shift=4, Win=8).
+Change them in **Settings → Hotkeys**: click a hotkey, press the combination you want.
 
-> `Win+Shift+S` is reserved by Windows Snipping Tool and usually cannot be stolen. Remap Print Screen in **Settings → Accessibility → Keyboard** if you want a system-wide replacement.
+> `Win + Shift + S` is reserved by Windows for the built-in Snipping Tool and cannot be
+> claimed by any other app. To replace Print Screen system-wide, remap it under
+> **Settings → Accessibility → Keyboard**.
 
 ## Settings
 
-Tray → **Settings…**
-
 | Setting | Notes |
-|---------|--------|
-| SDR white (nits) | Higher = darker output. Start at **250**; try **200–280** if still bright |
-| Tone mapping | Prefer **Windows / OBS** for UI/text screenshots |
-| Copy / toast / Editor | Copied by default; toast opens editor when clicked |
-| Open editor immediately | Opt-in to skip the toast and open the editor |
-| Start with Windows | HKCU Run key |
+|---|---|
+| SDR white level | Higher = darker output. Match your Windows *SDR content brightness* slider; 240–280 suits most displays |
+| Tone-mapping curve | Windows/OBS for UI and text, ACES for games and video |
+| Copy to clipboard | On by default |
+| Auto-save PNG | Also writes to the save folder on every capture |
+| Open editor immediately | Skips the toast |
+| Start with Windows | Per-user `Run` key, no elevation |
+
+Settings live in `%LOCALAPPDATA%\HDRSnip\config.json`; errors, if any, in `errors.log`
+beside it.
 
 ## How it works
 
-1. Hotkey / tray starts a capture.
-2. For region snips: grab the monitor under the cursor in `DXGI_FORMAT_R16G16B16A16_FLOAT`, tone-map a preview, show a dimmed overlay, crop the float buffer to the selection.
-3. Apply tone map (divide by `sdrWhiteNits / 80`, clip, sRGB encode — same idea as OBS).
-4. Copy PNG-ready bitmap to the clipboard and optionally open the editor.
+```
+hotkey ─▶ tray host ─▶ capture daemon (separate process)
+                            │  DXGI Desktop Duplication, R16G16B16A16_FLOAT
+                            │  warm D3D device + duplication + staging texture
+                            ▼
+                       shared memory  ──▶  tray host
+                                             │  crop in half-float
+                                             │  tone map via 64 KB LUT
+                                             ▼
+                                       clipboard · toast · editor
+```
+
+Three decisions carry most of the design:
+
+**DXGI runs in its own process.** Desktop duplication can raise access violations that
+no managed handler can catch. Isolating it means a driver fault costs one restarted
+child, not the tray app. The daemon is started at launch and kept warm, so the first
+snip is as fast as the tenth — and if a machine simply cannot do duplication, the
+client stops retrying and falls through to GDI instead of paying a process launch every
+time.
+
+**Pixels never travel down the pipe.** A 4K half-float frame is 66 MB. The pipe carries
+UTF-8 command lines only; the frame is published into a named shared-memory block and
+mapped by the tray process, so it is copied once rather than serialised, streamed and
+rebuilt.
+
+**Tone mapping is a lookup table.** Every supported curve is a pure per-channel function
+of the input sample, and every input is one of 65,536 half-float bit patterns. So each
+curve collapses into a 64 KB byte table built once per capture, and the pixel loop is
+three table reads per pixel — no `pow`, no per-pixel delegate. Measured on a 3840×2160
+HDR frame: **9.4 ms** including bitmap allocation, against **69.1 ms** for the
+straightforward float-expansion-plus-`MathF.Pow` version, at half the peak memory.
 
 ## Project layout
 
 ```
 HDRSnip/
-  Capture/     DXGI FP16 grab + tone mapping
-  Views/       Overlay, toolbar, editor, settings
-  Services/    Hotkeys, autostart
-  Models/      Config
+  Capture/     Daemon, DXGI session, shared-memory transport, tone mapper
+  Views/       Tray host, mode bar, selection overlay, editor, settings
+  Controls/    HotkeyBox
+  Services/    Hotkeys, autostart, notifications, theme
+  Interop/     Every P/Invoke, in one file
+  Models/      Config and hotkey types
+  Theme/       Dark.xaml + Light.xaml palettes, Controls.xaml component library
+packaging/     MSIX manifest and generated tiles
+tools/         Generate-Assets.ps1 — the entire brand, from one vector definition
+build.ps1      Every build, run, package and install task
 ```
+
+## Building
+
+```powershell
+.\build.ps1 build       # debug build
+.\build.ps1 run         # build and launch
+.\build.ps1 assets      # regenerate logo, icon and every Store tile
+.\build.ps1 package     # self-contained MSIX for the Store
+.\build.ps1 clean
+```
+
+See [docs/BUILD.md](docs/BUILD.md) for the full task reference and
+[docs/STORE-SUBMISSION.md](docs/STORE-SUBMISSION.md) for publishing.
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
 
-Tone-mapping approach inspired by OBS and community HDR screenshot tools; implementation is original C# / Vortice code.
+The tone-mapping approach follows the same reasoning as OBS and other community HDR
+capture tools; the implementation is original C# over [Vortice.Windows](https://github.com/amerkoleci/Vortice.Windows).

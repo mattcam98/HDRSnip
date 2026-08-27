@@ -1,0 +1,29 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Dark palette. Every visual in the app resolves colour through these keys,
+       so swapping this dictionary for Light.xaml retints the whole product. -->
+
+  <SolidColorBrush x:Key="Surface.Base"    Color="#FF17171B" />
+  <SolidColorBrush x:Key="Surface.Layer"   Color="#FF1E1E23" />
+  <SolidColorBrush x:Key="Surface.Overlay" Color="#FF23232A" />
+  <SolidColorBrush x:Key="Surface.Input"   Color="#FF26262D" />
+  <SolidColorBrush x:Key="Surface.Canvas"  Color="#FF101013" />
+
+  <SolidColorBrush x:Key="Stroke.Subtle"  Color="#14FFFFFF" />
+  <SolidColorBrush x:Key="Stroke.Default" Color="#24FFFFFF" />
+  <SolidColorBrush x:Key="Stroke.Strong"  Color="#3DFFFFFF" />
+
+  <SolidColorBrush x:Key="Text.Primary"   Color="#FFF2F3F5" />
+  <SolidColorBrush x:Key="Text.Secondary" Color="#FFA6A9B4" />
+  <SolidColorBrush x:Key="Text.Tertiary"  Color="#FF757882" />
+  <SolidColorBrush x:Key="Text.OnAccent"  Color="#FF0B0B0E" />
+
+  <SolidColorBrush x:Key="Accent.Default" Color="#FF4CC2FF" />
+  <SolidColorBrush x:Key="Accent.Muted"   Color="#334CC2FF" />
+
+  <SolidColorBrush x:Key="Control.Fill"        Color="#0FFFFFFF" />
+  <SolidColorBrush x:Key="Control.FillHover"   Color="#1AFFFFFF" />
+  <SolidColorBrush x:Key="Control.FillPressed" Color="#0AFFFFFF" />
+
+</ResourceDictionary>
