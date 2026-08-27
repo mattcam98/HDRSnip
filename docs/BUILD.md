@@ -65,6 +65,7 @@ Outputs:
 | `HDRSnip/Assets/app.ico` | 16–256 px, DIB below 128 px and PNG above |
 | `packaging/Images/` | Every tile at scale 100/125/150/200/400 plus unplated target sizes |
 | `docs/assets/` | `logo.svg`, `logo.png`, `favicon.png`, `favicon.ico` |
+| `packaging/Listing/` | Store listing art: poster, box, hero and display tiles on a solid background |
 
 `build.ps1 package` runs `makepri` over the staged layout, which is what makes Windows
 actually pick the right scale variant. Without `resources.pri` the base tile is stretched

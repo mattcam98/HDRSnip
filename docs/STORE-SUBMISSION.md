@@ -114,9 +114,19 @@ the minimum Partner Center accepts). Four that tell the story:
 
 ### Store logos
 
-`build.ps1 assets` writes `packaging/Images/StoreLogo300.png` for the 300×300 field.
-For poster, box and hero art, composite `docs/assets/logo.png` on a solid background —
-the Store rejects transparency in those slots.
+`build.ps1 assets` writes ready-to-upload listing art to `packaging/Listing/`, composited
+on the app's dark surface because Partner Center rejects transparency in the poster, box
+and hero slots:
+
+| File | Field |
+|---|---|
+| `poster-9x16-720x1080.png` / `-1440x2160.png` | 9:16 Poster art |
+| `boxart-1x1-1080.png` / `-2160.png` | 1:1 Box art |
+| `superhero-16x9-1920x1080.png` / `-3840x2160.png` | 16:9 Super hero art — carries no product title, as that slot requires |
+| `tile-300.png`, `tile-150.png`, `tile-71.png` | Store display images |
+
+The transparent tiles in `packaging/Images/` are for the package itself, where Windows
+tints them. Do not upload those to the listing fields.
 
 ### Pricing
 Free.

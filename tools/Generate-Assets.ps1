@@ -301,6 +301,95 @@ $brackets
         Write-Host "    $([System.IO.Path]::GetRelativePath($Root, $Path))" -ForegroundColor DarkGray
     }
 
+    # ------------------------------------------------------- Store listing art
+    # Partner Center's poster, box and hero slots reject transparency, so these
+    # are composited on the app's own dark surface rather than left cut out.
+
+    function New-ListingBackground($dc, [double]$W, [double]$H) {
+        $bg = New-Object System.Windows.Media.LinearGradientBrush
+        $bg.StartPoint = New-Object System.Windows.Point(0, 0)
+        $bg.EndPoint = New-Object System.Windows.Point(1, 1)
+        $bg.GradientStops.Add((New-Object System.Windows.Media.GradientStop((ConvertTo-Color '#FF141418'), 0.0)))
+        $bg.GradientStops.Add((New-Object System.Windows.Media.GradientStop((ConvertTo-Color '#FF1F1F28'), 1.0)))
+        $dc.DrawRectangle($bg, $null, (New-Object System.Windows.Rect(0, 0, $W, $H)))
+
+        # A soft accent bloom keeps a flat panel from looking dead.
+        $glow = New-Object System.Windows.Media.RadialGradientBrush
+        $glow.GradientOrigin = New-Object System.Windows.Point(0.82, 0.16)
+        $glow.Center = New-Object System.Windows.Point(0.82, 0.16)
+        $glow.RadiusX = 0.75
+        $glow.RadiusY = 0.65
+        $glow.GradientStops.Add((New-Object System.Windows.Media.GradientStop((ConvertTo-Color '#2E4CC2FF'), 0.0)))
+        $glow.GradientStops.Add((New-Object System.Windows.Media.GradientStop((ConvertTo-Color '#00000000'), 1.0)))
+        $dc.DrawRectangle($glow, $null, (New-Object System.Windows.Rect(0, 0, $W, $H)))
+    }
+
+    function New-Text([string]$Text, [double]$Size, [string]$Weight, [string]$Hex) {
+        $weightValue = [System.Windows.FontWeights]::$Weight
+        $typeface = New-Object System.Windows.Media.Typeface(
+            (New-Object System.Windows.Media.FontFamily('Segoe UI Variable Display, Segoe UI')),
+            [System.Windows.FontStyles]::Normal, $weightValue, [System.Windows.FontStretches]::Normal)
+        $brush = New-Object System.Windows.Media.SolidColorBrush((ConvertTo-Color $Hex))
+        return New-Object System.Windows.Media.FormattedText(
+            $Text, [System.Globalization.CultureInfo]::GetCultureInfo('en-US'),
+            [System.Windows.FlowDirection]::LeftToRight, $typeface, $Size, $brush, 1.0)
+    }
+
+    # $Title is omitted for hero art, which Partner Center requires to carry no product name.
+    function Save-ListingArt([string]$Path, [int]$W, [int]$H, [double]$MarkCover, [double]$MarkCentreY,
+                             [string]$Title, [string]$Tagline) {
+        $visual = New-Object System.Windows.Media.DrawingVisual
+        $dc = $visual.RenderOpen()
+        New-ListingBackground $dc $W $H
+
+        $size = [Math]::Min($W, $H) * $MarkCover
+        $scale = $size / 1024.0
+        $dc.PushTransform((New-Object System.Windows.Media.TranslateTransform(
+            (($W - $size) / 2.0), ($H * $MarkCentreY - $size / 2.0))))
+        $dc.PushTransform((New-Object System.Windows.Media.ScaleTransform($scale, $scale)))
+        $dc.DrawDrawing($DrawingFull)
+        $dc.Pop(); $dc.Pop()
+
+        $cursor = $H * $MarkCentreY + $size / 2.0 + $H * 0.06
+        if ($Title) {
+            $text = New-Text $Title ($H * 0.062) 'SemiBold' '#FFF4F5F7'
+            $dc.DrawText($text, (New-Object System.Windows.Point((($W - $text.Width) / 2.0), $cursor)))
+            $cursor += $text.Height + $H * 0.018
+        }
+        if ($Tagline) {
+            $text = New-Text $Tagline ($H * 0.030) 'Normal' '#FFA6A9B4'
+            $dc.DrawText($text, (New-Object System.Windows.Point((($W - $text.Width) / 2.0), $cursor)))
+        }
+        $dc.Close()
+
+        $rtb = New-Object System.Windows.Media.Imaging.RenderTargetBitmap(
+            $W, $H, 96, 96, [System.Windows.Media.PixelFormats]::Pbgra32)
+        $rtb.Render($visual)
+        $rtb.Freeze()
+        Save-Png $rtb $Path
+    }
+
+    function Save-ListingTile([string]$Path, [int]$Size) {
+        $visual = New-Object System.Windows.Media.DrawingVisual
+        $dc = $visual.RenderOpen()
+        New-ListingBackground $dc $Size $Size
+        $mark = $Size * 0.66
+        $scale = $mark / 1024.0
+        $dc.PushTransform((New-Object System.Windows.Media.TranslateTransform(
+            (($Size - $mark) / 2.0), (($Size - $mark) / 2.0))))
+        $dc.PushTransform((New-Object System.Windows.Media.ScaleTransform($scale, $scale)))
+        $dc.DrawDrawing($(if ($Size -lt 96) { $DrawingCompact } else { $DrawingFull }))
+        $dc.Pop(); $dc.Pop()
+        $dc.Close()
+
+        $rtb = New-Object System.Windows.Media.Imaging.RenderTargetBitmap(
+            $Size, $Size, 96, 96, [System.Windows.Media.PixelFormats]::Pbgra32)
+        $rtb.Render($visual)
+        $rtb.Freeze()
+        Save-Png $rtb $Path
+    }
+
+    # ------------------------------------------------------------------ emit
     # ------------------------------------------------------------------ emit
     $assets = Join-Path $Root 'HDRSnip\Assets'
     $images = Join-Path $Root 'packaging\Images'
@@ -346,6 +435,22 @@ $brackets
 
     # Partner Center asks for a 300x300 listing logo.
     Save-Png (New-MarkBitmap 300 300 0.78) (Join-Path $images 'StoreLogo300.png')
+
+    Write-Host '==> Store listing art' -ForegroundColor Cyan
+    $listing = Join-Path $Root 'packaging\Listing'
+    $tagline = 'Screenshots that stay sharp when HDR is on'
+
+    Save-ListingArt (Join-Path $listing 'poster-9x16-720x1080.png')    720 1080 0.52 0.36 'HDRSnip' $tagline
+    Save-ListingArt (Join-Path $listing 'poster-9x16-1440x2160.png')  1440 2160 0.52 0.36 'HDRSnip' $tagline
+    Save-ListingArt (Join-Path $listing 'boxart-1x1-1080.png')        1080 1080 0.44 0.40 'HDRSnip' ''
+    Save-ListingArt (Join-Path $listing 'boxart-1x1-2160.png')        2160 2160 0.44 0.40 'HDRSnip' ''
+    # Hero art must carry no product title, so it gets the tagline only.
+    Save-ListingArt (Join-Path $listing 'superhero-16x9-1920x1080.png') 1920 1080 0.44 0.40 '' $tagline
+    Save-ListingArt (Join-Path $listing 'superhero-16x9-3840x2160.png') 3840 2160 0.44 0.40 '' $tagline
+
+    foreach ($tile in 300, 150, 71) {
+        Save-ListingTile (Join-Path $listing "tile-$tile.png") $tile
+    }
 }
 
 # WPF rendering requires STA; pwsh 7 runs MTA by default.
