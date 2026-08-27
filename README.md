@@ -153,6 +153,11 @@ build.ps1      Every build, run, package and install task
 See [docs/BUILD.md](docs/BUILD.md) for the full task reference and
 [docs/STORE-SUBMISSION.md](docs/STORE-SUBMISSION.md) for publishing.
 
+## Privacy
+
+HDRSnip makes no network connections and collects nothing. Screenshots, settings and the
+error log never leave your machine. See [PRIVACY.md](PRIVACY.md).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
