@@ -133,7 +133,26 @@ by the Desktop Bridge app model itself, for any app with
 `EntryPoint="Windows.FullTrustApplication"`. Do not remove it; the package will not run.
 Approval is routine for desktop apps, though the first submission can sit for a few days.
 
-Paste this into **Restricted capabilities → Why do you need the runFullTrust capability**:
+**The field caps at 500 characters.** Paste this into
+**Restricted capabilities → Why do you need the runFullTrust capability** (497 chars):
+
+```
+HDRSnip is a Win32/WPF desktop application packaged as MSIX via the Desktop Bridge. runFullTrust is mandatory for the EntryPoint="Windows.FullTrustApplication" model; the app cannot run without it.
+
+It is used only to: capture the desktop in HDR via DXGI Desktop Duplication, register global capture hotkeys, write to the clipboard, and save PNGs to a folder the user chooses.
+
+No elevation (asInvoker), no network access, no telemetry, no data collection. MIT source: github.com/mattcam98/HDRSnip
+```
+
+If a reviewer asks about the second HDRSnip process they can see running:
+
+> HDRSnip runs one child copy of its own executable to host DXGI Desktop Duplication,
+> so a graphics driver fault cannot terminate the tray app. It talks only to its parent
+> over a local named pipe and shared memory, and does nothing else.
+
+<details>
+<summary>Long-form version, for any field that allows it</summary>
+
 
 ```
 HDRSnip is a classic Win32 desktop application (C#/WPF, .NET 8) packaged with
@@ -170,6 +189,8 @@ Duplication respects protected-content restrictions enforced by Windows.
 The app is open source under the MIT licence and the full implementation can be
 reviewed at https://github.com/mattcam98/HDRSnip
 ```
+
+</details>
 
 The justification rests on the app-model requirement, which is not arguable. It
 deliberately avoids claiming Desktop Duplication is the *only* way to read an HDR
