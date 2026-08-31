@@ -30,7 +30,7 @@ public partial class App : Application
         app.Run();
     }
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         InstallErrorHandlers();
         base.OnStartup(e);
@@ -55,6 +55,15 @@ public partial class App : Application
         var tray = new TrayHostWindow();
         MainWindow = tray;
         tray.Show();
+
+        try
+        {
+            await AutostartService.ReconcileAsync(Config.StartWithWindows);
+        }
+        catch (Exception ex)
+        {
+            LogError("Autostart", ex);
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)

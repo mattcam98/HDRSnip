@@ -220,7 +220,7 @@ and a reviewer who knows that should not find an overstatement in your submissio
 ## Sideloading for testers
 
 ```powershell
-Add-AppxPackage -Path .\artifacts\HDRSnip_1.1.0.0_x64.msix
+Add-AppxPackage -Path .\artifacts\HDRSnip_1.1.1.0_x64.msix
 ```
 
 Unsigned packages need developer mode or a trusted certificate. Store installs do not.

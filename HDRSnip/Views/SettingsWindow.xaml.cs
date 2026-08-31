@@ -16,13 +16,25 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _config = config;
 
-        SourceInitialized += (_, _) => ThemeService.ApplyToWindow(this);
+        SourceInitialized += async (_, _) =>
+        {
+            ThemeService.ApplyToWindow(this);
+            try
+            {
+                AutostartToggle.IsChecked = await AutostartService.IsEnabledAsync();
+            }
+            catch (Exception ex)
+            {
+                App.LogError("Autostart", ex);
+                AutostartToggle.IsChecked = _config.StartWithWindows;
+            }
+        };
 
         SaveFolderBox.Text = config.SaveFolder;
         CopyToggle.IsChecked = config.CopyToClipboard;
         AutoSaveToggle.IsChecked = config.AutoSave;
         EditorToggle.IsChecked = config.OpenEditorAfterCapture;
-        AutostartToggle.IsChecked = config.StartWithWindows || AutostartService.IsEnabled();
+        AutostartToggle.IsChecked = config.StartWithWindows;
 
         ToneMapBox.SelectedIndex = config.ToneMapMethod switch
         {
@@ -68,7 +80,7 @@ public partial class SettingsWindow : Window
 
     private void OnCancel(object sender, RoutedEventArgs e) => Close();
 
-    private void OnSave(object sender, RoutedEventArgs e)
+    private async void OnSave(object sender, RoutedEventArgs e)
     {
         var folder = SaveFolderBox.Text.Trim();
         if (folder.Length == 0)
@@ -100,7 +112,24 @@ public partial class SettingsWindow : Window
                 "HDRSnip", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
 
-        AutostartService.SetEnabled(_config.StartWithWindows);
+        var autostart = await AutostartService.SetEnabledAsync(_config.StartWithWindows);
+        if (autostart.Message is not null)
+        {
+            if (autostart.OfferStartupSettings)
+            {
+                var open = MessageBox.Show(
+                    autostart.Message + "\n\nOpen Windows Startup Apps now?",
+                    "HDRSnip", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (open == MessageBoxResult.Yes)
+                    AutostartService.OpenWindowsStartupSettings();
+            }
+            else
+            {
+                MessageBox.Show(autostart.Message, "HDRSnip",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         DialogResult = true;
         Close();
     }

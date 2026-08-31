@@ -84,7 +84,7 @@ Change them in **Settings → Hotkeys**: click a hotkey, press the combination y
 | Copy to clipboard | On by default |
 | Auto-save PNG | Also writes to the save folder on every capture |
 | Open editor immediately | Skips the toast |
-| Start with Windows | Per-user `Run` key, no elevation |
+| Start with Windows | Store package: Windows startup task. Unpackaged: per-user `Run` key. No elevation |
 
 Settings live in `%LOCALAPPDATA%\HDRSnip\config.json`; errors, if any, in `errors.log`
 beside it.

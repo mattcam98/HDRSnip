@@ -59,6 +59,14 @@
             </com:ExeServer>
           </com:ComServer>
         </com:Extension>
+        <!-- Explorer will not launch a WindowsApps exe from the HKCU Run key.
+             This is the only sign-in path that works for the Store package.
+             Enabled=false: the in-app toggle calls StartupTask.RequestEnableAsync. -->
+        <desktop:Extension Category="windows.startupTask"
+                           Executable="HDRSnip\HDRSnip.exe"
+                           EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="HDRSnipStartup" Enabled="false" DisplayName="HDRSnip" />
+        </desktop:Extension>
       </Extensions>
     </Application>
   </Applications>

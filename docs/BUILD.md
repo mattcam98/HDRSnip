@@ -38,7 +38,7 @@ already in the install directory.
 `Directory.Build.props` holds the single `<Version>` for the whole product.
 
 ```xml
-<Version>1.1.0</Version>
+<Version>1.1.1</Version>
 ```
 
 `build.ps1` reads it and stamps the four-part MSIX identity version at pack time, so the
@@ -99,7 +99,7 @@ New-SelfSignedCertificate -Type Custom -CertStoreLocation Cert:\CurrentUser\My -
 Then sign with its thumbprint:
 
 ```bash
-signtool sign /fd SHA256 /sha1 <thumbprint> .\artifacts\HDRSnip_1.1.0.0_x64.msix
+signtool sign /fd SHA256 /sha1 <thumbprint> .\artifacts\HDRSnip_1.1.1.0_x64.msix
 ```
 
 The certificate must also be trusted on the target machine (import it into
