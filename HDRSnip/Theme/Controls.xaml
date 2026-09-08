@@ -175,6 +175,145 @@
     <Setter Property="Height" Value="34" />
   </Style>
 
+  <!-- ========================================================= Markup tools -->
+
+  <!-- Icons inside a tool button take the button's Foreground, so a checked
+       tool tints its glyph without every icon needing its own trigger. -->
+  <Style x:Key="Glyph.Tool" TargetType="TextBlock" BasedOn="{StaticResource Glyph}">
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}" />
+  </Style>
+
+  <Style x:Key="Icon.Tool" TargetType="Path">
+    <Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ButtonBase}}" />
+    <Setter Property="StrokeThickness" Value="1.6" />
+    <Setter Property="StrokeStartLineCap" Value="Round" />
+    <Setter Property="StrokeEndLineCap" Value="Round" />
+    <Setter Property="StrokeLineJoin" Value="Round" />
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+    <Setter Property="Stretch" Value="None" />
+    <Setter Property="SnapsToDevicePixels" Value="False" />
+  </Style>
+
+  <!-- Mutually exclusive tool picker. Same hover wash as the buttons; the
+       checked state uses the muted accent so it reads as "armed", not pressed. -->
+  <Style x:Key="Tool.Button" TargetType="RadioButton">
+    <Setter Property="Width" Value="34" />
+    <Setter Property="Height" Value="34" />
+    <Setter Property="Margin" Value="1,0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Grid>
+            <Border x:Name="Fill"
+                    Background="{TemplateBinding Background}"
+                    CornerRadius="{StaticResource Radius.Control}"
+                    SnapsToDevicePixels="True" />
+            <Border x:Name="Wash"
+                    Background="{DynamicResource Control.FillHover}"
+                    CornerRadius="{StaticResource Radius.Control}"
+                    Opacity="0" />
+            <Border x:Name="Focus"
+                    BorderBrush="{DynamicResource Accent.Default}"
+                    BorderThickness="2"
+                    CornerRadius="{StaticResource Radius.Control}"
+                    Margin="-2"
+                    Visibility="Collapsed" />
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Trigger.EnterActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="Wash" Storyboard.TargetProperty="Opacity"
+                                     To="1" Duration="{StaticResource Motion.Fast}" EasingFunction="{StaticResource Motion.Ease}" />
+                  </Storyboard>
+                </BeginStoryboard>
+              </Trigger.EnterActions>
+              <Trigger.ExitActions>
+                <BeginStoryboard>
+                  <Storyboard>
+                    <DoubleAnimation Storyboard.TargetName="Wash" Storyboard.TargetProperty="Opacity"
+                                     To="0" Duration="{StaticResource Motion.Normal}" EasingFunction="{StaticResource Motion.Ease}" />
+                  </Storyboard>
+                </BeginStoryboard>
+              </Trigger.ExitActions>
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Fill" Property="Background" Value="{DynamicResource Accent.Muted}" />
+              <Setter Property="Foreground" Value="{DynamicResource Accent.Default}" />
+            </Trigger>
+            <Trigger Property="IsKeyboardFocused" Value="True">
+              <Setter TargetName="Focus" Property="Visibility" Value="Visible" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Opacity" Value="0.4" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- Colour swatch. Not focusable, so picking a colour while typing a text
+       mark restyles the text instead of ending the edit. -->
+  <Style x:Key="Swatch" TargetType="RadioButton">
+    <Setter Property="Width" Value="30" />
+    <Setter Property="Height" Value="30" />
+    <Setter Property="Margin" Value="1" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="RadioButton">
+          <Grid Background="Transparent">
+            <Ellipse x:Name="Ring"
+                     Stroke="{DynamicResource Text.Primary}"
+                     StrokeThickness="2"
+                     Margin="1"
+                     Visibility="Collapsed" />
+            <Ellipse x:Name="Dot"
+                     Fill="{TemplateBinding Background}"
+                     Stroke="{DynamicResource Stroke.Default}"
+                     StrokeThickness="1"
+                     Margin="5" />
+          </Grid>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Dot" Property="Margin" Value="3" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Ring" Property="Visibility" Value="Visible" />
+              <Setter TargetName="Dot" Property="Margin" Value="5" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- Popup surface: margin leaves room for the shadow inside the popup bounds. -->
+  <Style x:Key="Flyout" TargetType="Border">
+    <Setter Property="Background" Value="{DynamicResource Surface.Overlay}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource Stroke.Default}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="{StaticResource Radius.Flyout}" />
+    <Setter Property="Padding" Value="14" />
+    <Setter Property="Margin" Value="12,8,12,16" />
+    <Setter Property="Effect">
+      <Setter.Value>
+        <DropShadowEffect BlurRadius="20" ShadowDepth="4" Direction="270" Opacity="0.36" Color="#000000" />
+      </Setter.Value>
+    </Setter>
+  </Style>
+
   <!-- =============================================================== Inputs -->
 
   <Style x:Key="Field.TextBox" TargetType="TextBox">

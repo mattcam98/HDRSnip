@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using HDRSnip.Capture;
 using HDRSnip.Models;
 using HDRSnip.Services;
@@ -34,6 +35,14 @@ public partial class App : Application
     {
         InstallErrorHandlers();
         base.OnStartup(e);
+
+        // `HDRSnip --edit image.png` opens the markup editor on an existing file.
+        // It runs beside a tray instance rather than replacing it.
+        if (e.Args is ["--edit", var imagePath])
+        {
+            OpenStandaloneEditor(imagePath);
+            return;
+        }
 
         _instanceLock = new Mutex(true, SingleInstanceMutex, out _ownsInstanceLock);
         if (!_ownsInstanceLock)
@@ -84,6 +93,38 @@ public partial class App : Application
 
         _instanceLock?.Dispose();
         base.OnExit(e);
+    }
+
+    private void OpenStandaloneEditor(string imagePath)
+    {
+        Config = AppConfig.Load();
+        ThemeService.Initialize();
+        ShutdownMode = ShutdownMode.OnLastWindowClose;
+
+        try
+        {
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.UriSource = new Uri(Path.GetFullPath(imagePath));
+            image.EndInit();
+            image.Freeze();
+
+            var fullPath = Path.GetFullPath(imagePath);
+            var editor = new EditorWindow(
+                new CaptureResult(image, WasHdr: false, SavedPath: fullPath),
+                new CaptureService(Config));
+            editor.ShowStatus($"Opened {fullPath}");
+            MainWindow = editor;
+            editor.Show();
+        }
+        catch (Exception ex)
+        {
+            LogError("StandaloneEditor", ex);
+            MessageBox.Show($"Could not open {imagePath}.\n\n{ex.Message}", "HDRSnip",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown();
+        }
     }
 
     private void InstallErrorHandlers()

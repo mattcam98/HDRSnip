@@ -1,0 +1,6 @@
+# Normalise line endings in the repository; check out per core.autocrlf / .editorconfig.
+* text=auto
+
+*.png binary
+*.ico binary
+*.jpg binary

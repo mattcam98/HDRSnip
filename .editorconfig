@@ -26,3 +26,6 @@ csharp_prefer_braces = when_multiline:silent
 dotnet_sort_system_directives_first = true
 dotnet_style_qualification_for_field = false:suggestion
 dotnet_style_require_accessibility_modifiers = for_non_interface_members:suggestion
+
+# Existing code keeps braces of a case block at the case label indent.
+csharp_indent_case_contents_when_block = false

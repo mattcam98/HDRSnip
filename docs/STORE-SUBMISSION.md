@@ -66,6 +66,7 @@ or share.
 • Global hotkeys you can record in the app
 • Copies to the clipboard automatically, as DIB and lossless PNG
 • Click the notification to open the editor, zoom and save
+• Mark up captures: pen, highlighter, arrows, shapes, text, pixelate and crop, with undo
 • Lives in the notification area and uses no CPU while idle
 • Follows your Windows light or dark theme
 • Multi-monitor and per-monitor-DPI aware
@@ -82,7 +83,7 @@ Region snip over a frozen HDR-correct preview
 Three tone-mapping curves with adjustable SDR white
 Copies to the clipboard as DIB and lossless PNG
 Recordable global hotkeys
-Built-in editor with zoom, copy and save
+Built-in editor with markup tools, crop, zoom, copy and save
 Follows the Windows light and dark theme
 Open source under the MIT licence
 ```

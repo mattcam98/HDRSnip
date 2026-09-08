@@ -288,16 +288,24 @@ public partial class TrayHostWindow : Window
         if (_lastCapture is null)
             return;
 
-        if (_editor is { IsLoaded: true })
+        // Reuse the window unless it holds markup the user has not exported yet;
+        // then a second window is far better than silently discarding their work.
+        if (_editor is { IsLoaded: true } && !_editor.HasUnsavedEdits)
         {
             _editor.Load(_lastCapture);
             _editor.Activate();
             return;
         }
 
-        _editor = new EditorWindow(_lastCapture, _capture);
-        _editor.Closed += (_, _) => _editor = null;
-        _editor.Show();
-        _editor.Activate();
+        var editor = new EditorWindow(_lastCapture, _capture);
+        editor.Closed += (_, _) =>
+        {
+            // An older window closing must not forget a newer one.
+            if (ReferenceEquals(_editor, editor))
+                _editor = null;
+        };
+        _editor = editor;
+        editor.Show();
+        editor.Activate();
     }
 }

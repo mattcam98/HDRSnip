@@ -36,6 +36,7 @@ looks like what you saw.
 - **Global hotkeys**, recorded in-app — no config file editing
 - Copies to the clipboard as both DIB and lossless PNG
 - Toast notification, click to open the editor; or open the editor immediately
+- **Markup editor** — pen, highlighter, line, arrow, rectangle, ellipse, text, pixelate and crop, with undo/redo; marks stay editable until you copy or save
 - Editor with fit/actual-size zoom, copy, save, and save-as
 - Follows the Windows light/dark theme, live
 - Multi-monitor and per-monitor-DPI aware
@@ -74,6 +75,28 @@ Change them in **Settings → Hotkeys**: click a hotkey, press the combination y
 > `Win + Shift + S` is reserved by Windows for the built-in Snipping Tool and cannot be
 > claimed by any other app. To replace Print Screen system-wide, remap it under
 > **Settings → Accessibility → Keyboard**.
+
+## Markup
+
+The editor opens on every capture (or from the toast). Pick a tool, draw, then **Copy** or
+**Save** — the exported image is flattened at 1:1 with the capture, so nothing is resampled.
+
+| Tool | Key | Notes |
+|---|---|---|
+| Select | `V` | Click a mark to move it, restyle it from the colour chip, or press `Delete`. Double-click text to edit it |
+| Pen · Highlighter | `P` · `H` | Hold `Shift` for a straight line |
+| Line · Arrow | `L` · `A` | Hold `Shift` to snap to 45° |
+| Rectangle · Ellipse | `R` · `E` | Hold `Shift` for a square or circle |
+| Text | `T` | Click to place. `Enter` adds a line, `Ctrl+Enter` or clicking away finishes, `Esc` cancels |
+| Pixelate | `X` | Drag over anything that should not be readable |
+| Crop | `C` | Drag the handles or draw a new area, then `Enter` or **Apply crop**. Non-destructive: crop again to widen |
+| Colour & size | `S` | Remembered per tool |
+| Undo · Redo | `Ctrl+Z` · `Ctrl+Y` | Every mark, move, restyle and crop is one step |
+
+Closing with unexported markup asks first. If a new capture arrives while the editor holds
+unexported markup, it opens in a second window rather than replacing your work.
+
+To mark up an existing file: `HDRSnip.exe --edit image.png`.
 
 ## Settings
 
@@ -130,6 +153,7 @@ straightforward float-expansion-plus-`MathF.Pow` version, at half the peak memor
 HDRSnip/
   Capture/     Daemon, DXGI session, shared-memory transport, tone mapper
   Views/       Tray host, mode bar, selection overlay, editor, settings
+  Editing/     Annotation model, undo history and the markup canvas
   Controls/    HotkeyBox
   Services/    Hotkeys, autostart, notifications, theme
   Interop/     Every P/Invoke, in one file
