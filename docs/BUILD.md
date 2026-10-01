@@ -7,7 +7,7 @@ about, and no task that needs Visual Studio.
 
 | For | You need |
 |---|---|
-| Building and running | [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) |
+| Building and running | [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) |
 | `package` (MSIX) | Windows SDK, for `makeappx.exe` and `makepri.exe`. `build.ps1 package` offers to install it via winget if it is missing |
 | Everything else | Nothing extra |
 
@@ -38,7 +38,7 @@ already in the install directory.
 `Directory.Build.props` holds the single `<Version>` for the whole product.
 
 ```xml
-<Version>1.1.1</Version>
+<Version>1.2.0</Version>
 ```
 
 `build.ps1` reads it and stamps the four-part MSIX identity version at pack time, so the
@@ -99,7 +99,7 @@ New-SelfSignedCertificate -Type Custom -CertStoreLocation Cert:\CurrentUser\My -
 Then sign with its thumbprint:
 
 ```bash
-signtool sign /fd SHA256 /sha1 <thumbprint> .\artifacts\HDRSnip_1.1.1.0_x64.msix
+signtool sign /fd SHA256 /sha1 <thumbprint> .\artifacts\HDRSnip_1.2.0.0_x64.msix
 ```
 
 The certificate must also be trusted on the target machine (import it into

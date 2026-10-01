@@ -166,7 +166,7 @@ If a reviewer asks about the second HDRSnip process they can see running:
 
 
 ```
-HDRSnip is a classic Win32 desktop application (C#/WPF, .NET 8) packaged with
+HDRSnip is a classic Win32 desktop application (C#/WPF, .NET 10) packaged with
 MSIX via the Desktop Bridge. It is declared as
 EntryPoint="Windows.FullTrustApplication", and runFullTrust is required by that
 app model itself — a packaged desktop application cannot run without it.

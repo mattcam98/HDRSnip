@@ -2,7 +2,6 @@
 bin/
 obj/
 artifacts/
-publish/
 
 # IDE
 .vs/

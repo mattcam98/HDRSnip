@@ -127,7 +127,7 @@ switch ($Task) {
         Write-Step "Publishing framework-dependent -> $out"
         Invoke-Dotnet @('publish', $Project, '-c', 'Release', '-r', 'win-x64',
                         '--self-contained', 'false', '-o', $out)
-        Write-Note "$out\HDRSnip.exe  (requires the .NET 8 Desktop Runtime)"
+        Write-Note "$out\HDRSnip.exe  (requires the .NET 10 Desktop Runtime)"
     }
 
     'portable' {
@@ -247,10 +247,7 @@ switch ($Task) {
         $targets = @(
             (Join-Path $Root 'HDRSnip\bin'),
             (Join-Path $Root 'HDRSnip\obj'),
-            (Join-Path $Root 'packaging\bin'),
-            (Join-Path $Root 'packaging\obj'),
-            $Artifacts,
-            (Join-Path $Root 'publish')
+            $Artifacts
         )
         foreach ($dir in $targets) {
             if (Test-Path $dir) { Remove-Item $dir -Recurse -Force; Write-Note "removed $dir" }
