@@ -261,6 +261,41 @@ public sealed record TextAnnotation : Annotation
         pixelsPerDip: 1.0);
 }
 
+/// <summary>A numbered step marker: a filled disc with its number, for walking through a sequence.</summary>
+public sealed record NumberAnnotation : Annotation
+{
+    public required Point Center { get; init; }
+    public required int Number { get; init; }
+    public double FontSize { get; init; } = 28;
+
+    private double Radius => FontSize * 0.8;
+
+    public override Rect Bounds => new(Center.X - Radius, Center.Y - Radius, Radius * 2, Radius * 2);
+
+    public override Annotation Translate(Vector delta) => this with { Center = Center + delta };
+
+    public override Annotation WithSize(double size) => this with { FontSize = size };
+
+    public override void Draw(DrawingContext dc, BitmapSource source)
+    {
+        dc.DrawEllipse(Freeze(new SolidColorBrush(Color)), null, Center, Radius, Radius);
+
+        // Black on light discs, white on dark ones, by perceived brightness.
+        bool light = 0.299 * Color.R + 0.587 * Color.G + 0.114 * Color.B > 160;
+        var label = new FormattedText(
+            Number.ToString(CultureInfo.InvariantCulture),
+            CultureInfo.InvariantCulture,
+            FlowDirection.LeftToRight,
+            TextAnnotation.Typeface,
+            FontSize,
+            light ? Brushes.Black : Brushes.White,
+            pixelsPerDip: 1.0);
+        dc.DrawText(label, new Point(Center.X - label.Width / 2, Center.Y - label.Height / 2));
+    }
+
+    public override bool HitTest(Point point, double tolerance) => (point - Center).Length <= Radius + tolerance;
+}
+
 /// <summary>
 /// Redacts a region by averaging it into blocks. The pixelated tile is computed
 /// from the source once per rectangle and reused for every redraw.

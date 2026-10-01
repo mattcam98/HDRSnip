@@ -18,6 +18,12 @@ internal static partial class Native
         public int Y;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
     // ------------------------------------------------------------ user32
 
     [LibraryImport("user32.dll")]
@@ -36,6 +42,29 @@ internal static partial class Native
     private static partial IntPtr MonitorFromPoint(POINT point, uint flags);
 
     [LibraryImport("user32.dll")]
+    private static partial IntPtr GetTopWindow(IntPtr parent);
+
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr GetWindow(IntPtr hwnd, uint command);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindowVisible(IntPtr hwnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsIconic(IntPtr hwnd);
+
+    [LibraryImport("user32.dll")]
+    private static partial uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr GetWindowLongPtrW(IntPtr hwnd, int index);
+
+    [LibraryImport("user32.dll")]
+    private static partial IntPtr SetWindowLongPtrW(IntPtr hwnd, int index, IntPtr value);
+
+    [LibraryImport("user32.dll")]
     internal static partial uint MapVirtualKeyW(uint code, uint mapType);
 
     // ------------------------------------------------------------ shcore
@@ -48,12 +77,93 @@ internal static partial class Native
     [LibraryImport("dwmapi.dll")]
     internal static partial int DwmFlush();
 
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    private static partial int DwmGetWindowRect(IntPtr hwnd, int attribute, out RECT value, int size);
+
+    [LibraryImport("dwmapi.dll", EntryPoint = "DwmGetWindowAttribute")]
+    private static partial int DwmGetWindowFlag(IntPtr hwnd, int attribute, out int value, int size);
+
     [LibraryImport("dwmapi.dll")]
     private static partial int DwmSetWindowAttribute(IntPtr hwnd, int attribute, in int value, int size);
 
     private const int DwmwaUseImmersiveDarkMode = 20;
     private const int DwmwaWindowCornerPreference = 33;
     private const int CornerPreferenceRound = 2;
+
+    // ------------------------------------------------------------ display config
+
+    [LibraryImport("user32.dll")]
+    private static partial int GetDisplayConfigBufferSizes(uint flags, out uint pathCount, out uint modeCount);
+
+    [LibraryImport("user32.dll")]
+    private static unsafe partial int QueryDisplayConfig(
+        uint flags, ref uint pathCount, byte* paths, ref uint modeCount, byte* modes, IntPtr topologyId);
+
+    [LibraryImport("user32.dll")]
+    private static unsafe partial int DisplayConfigGetDeviceInfo(byte* requestPacket);
+
+    /// <summary>
+    /// Reads the "SDR content brightness" Windows applies to one monitor in HDR
+    /// mode, in nits, or null if it cannot be determined.
+    /// </summary>
+    /// <remarks>
+    /// The DISPLAYCONFIG structures are walked as raw bytes: only four fields of
+    /// the 72-byte path entry are needed, and declaring the full nested layout
+    /// would be several times the size of this method.
+    /// </remarks>
+    internal static unsafe double? GetSdrWhiteNits(string gdiDeviceName)
+    {
+        const uint onlyActivePaths = 2;
+        const int pathSize = 72, modeSize = 64;
+        const int sourceAdapter = 0, sourceId = 8, targetAdapter = 20, targetId = 28;
+        const uint getSourceName = 1, getSdrWhiteLevel = 11;
+        const int headerSize = 20, sourceNameSize = headerSize + 32 * sizeof(char), whiteLevelSize = headerSize + 4;
+
+        if (GetDisplayConfigBufferSizes(onlyActivePaths, out uint pathCount, out uint modeCount) != 0 || pathCount == 0)
+            return null;
+
+        var paths = new byte[pathCount * pathSize];
+        var modes = new byte[Math.Max(modeCount, 1) * modeSize];
+        byte* request = stackalloc byte[sourceNameSize];
+
+        fixed (byte* pathBase = paths, modeBase = modes)
+        {
+            if (QueryDisplayConfig(onlyActivePaths, ref pathCount, pathBase, ref modeCount, modeBase, IntPtr.Zero) != 0)
+                return null;
+
+            for (uint i = 0; i < pathCount; i++)
+            {
+                byte* path = pathBase + i * pathSize;
+
+                FillHeader(request, getSourceName, sourceNameSize, path + sourceAdapter, *(uint*)(path + sourceId));
+                if (DisplayConfigGetDeviceInfo(request) != 0)
+                    continue;
+
+                var name = new string((char*)(request + headerSize));
+                if (!name.Equals(gdiDeviceName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                FillHeader(request, getSdrWhiteLevel, whiteLevelSize, path + targetAdapter, *(uint*)(path + targetId));
+                if (DisplayConfigGetDeviceInfo(request) != 0)
+                    return null;
+
+                // Reported in thousandths of the 80-nit scRGB reference white.
+                uint level = *(uint*)(request + headerSize);
+                return level > 0 ? level / 1000.0 * 80.0 : null;
+            }
+        }
+
+        return null;
+
+        static void FillHeader(byte* packet, uint type, int size, byte* adapterLuid, uint id)
+        {
+            new Span<byte>(packet, sourceNameSize).Clear();
+            *(uint*)packet = type;
+            *(uint*)(packet + 4) = (uint)size;
+            *(long*)(packet + 8) = *(long*)adapterLuid;
+            *(uint*)(packet + 16) = id;
+        }
+    }
 
     // ------------------------------------------------------------ helpers
 
@@ -73,6 +183,54 @@ internal static partial class Native
             return 1.0;
 
         return dpiX / 96.0;
+    }
+
+    /// <summary>
+    /// Visible bounds of every top-level window on the desktop, front to back, in
+    /// physical pixels. Uses the DWM frame bounds, which exclude the invisible
+    /// resize border that GetWindowRect includes.
+    /// </summary>
+    internal static List<Rectangle> GetWindowBounds()
+    {
+        const uint next = 2;
+        const int exStyle = -20, extendedFrameBounds = 9, cloaked = 14;
+        const long clickThrough = 0x20;
+
+        var bounds = new List<Rectangle>();
+        for (var hwnd = GetTopWindow(IntPtr.Zero); hwnd != IntPtr.Zero; hwnd = GetWindow(hwnd, next))
+        {
+            if (!IsWindowVisible(hwnd) || IsIconic(hwnd))
+                continue;
+
+            // Overlays that pass the mouse through are not something the user can see to click.
+            if (((long)GetWindowLongPtrW(hwnd, exStyle) & clickThrough) != 0)
+                continue;
+
+            _ = GetWindowThreadProcessId(hwnd, out uint processId);
+            if (processId == Environment.ProcessId)
+                continue;
+
+            // Cloaked: on another virtual desktop, or a suspended Store app.
+            if (DwmGetWindowFlag(hwnd, cloaked, out int isCloaked, sizeof(int)) == 0 && isCloaked != 0)
+                continue;
+
+            if (DwmGetWindowRect(hwnd, extendedFrameBounds, out var rect, 16) != 0)
+                continue;
+
+            var window = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
+            if (window.Width > 8 && window.Height > 8)
+                bounds.Add(window);
+        }
+
+        return bounds;
+    }
+
+    /// <summary>Makes a window ignore the mouse and never become the foreground window.</summary>
+    internal static void MakeClickThrough(IntPtr hwnd)
+    {
+        const int gwlExStyle = -20;
+        const long transparent = 0x20, noActivate = 0x08000000, toolWindow = 0x80;
+        SetWindowLongPtrW(hwnd, gwlExStyle, (IntPtr)((long)GetWindowLongPtrW(hwnd, gwlExStyle) | transparent | noActivate | toolWindow));
     }
 
     /// <summary>Applies the Windows 11 dark title bar and rounded corners. No-op on older builds.</summary>

@@ -29,7 +29,7 @@ public static class AutostartService
         {
             return !string.IsNullOrEmpty(Package.Current.Id.FamilyName);
         }
-        catch (Exception)
+        catch
         {
             return false;
         }
@@ -41,7 +41,7 @@ public static class AutostartService
     {
         if (IsPackaged)
         {
-            var task = await TryGetStartupTaskAsync().ConfigureAwait(true);
+            var task = await TryGetStartupTaskAsync();
             return task is not null && IsOn(task.State);
         }
 
@@ -76,7 +76,7 @@ public static class AutostartService
         try
         {
             return IsPackaged
-                ? await SetPackagedAsync(enabled, interactive).ConfigureAwait(true)
+                ? await SetPackagedAsync(enabled, interactive)
                 : SetUnpackaged(enabled);
         }
         catch (Exception ex)
@@ -89,7 +89,7 @@ public static class AutostartService
 
     private static async Task<AutostartStatus> SetPackagedAsync(bool enabled, bool interactive)
     {
-        var task = await TryGetStartupTaskAsync().ConfigureAwait(true);
+        var task = await TryGetStartupTaskAsync();
         if (task is null)
         {
             return interactive

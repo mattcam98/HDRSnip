@@ -5,10 +5,7 @@ using HDRSnip.Models;
 
 namespace HDRSnip.Controls;
 
-/// <summary>
-/// Click, then press a combination to record it. Replaces hand-editing
-/// config.json, which was the only way to change a hotkey before.
-/// </summary>
+/// <summary>Click, then press a combination to record it.</summary>
 public sealed class HotkeyBox : Button
 {
     public static readonly DependencyProperty HotkeyProperty = DependencyProperty.Register(

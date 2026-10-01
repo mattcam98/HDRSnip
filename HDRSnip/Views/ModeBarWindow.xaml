@@ -48,6 +48,18 @@
 
       <Border Width="1" Margin="6,8" Background="{DynamicResource Stroke.Subtle}" />
 
+      <Button Style="{StaticResource Button.Subtle}"
+              Click="OnDelay"
+              Padding="12,10"
+              ToolTip="Wait before capturing, to catch menus and hover states (D)">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Style="{StaticResource Glyph}" Text="&#xE916;" Margin="0,0,8,0" VerticalAlignment="Center" />
+          <TextBlock x:Name="DelayLabel" Style="{StaticResource Type.Body}" MinWidth="52" VerticalAlignment="Center" />
+        </StackPanel>
+      </Button>
+
+      <Border Width="1" Margin="6,8" Background="{DynamicResource Stroke.Subtle}" />
+
       <Button Style="{StaticResource Button.Icon}" Click="OnClose" ToolTip="Close (Esc)">
         <TextBlock Style="{StaticResource Glyph}" Text="&#xE8BB;" FontSize="12" />
       </Button>

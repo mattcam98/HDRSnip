@@ -94,23 +94,31 @@
             </StackPanel>
 
             <StackPanel x:Name="NitsRow">
-              <DockPanel Margin="0,0,0,2">
-                <TextBlock Text="SDR white level" Style="{StaticResource Type.Body}" />
-                <TextBlock x:Name="NitsLabel"
-                           Style="{StaticResource Type.Body}"
-                           Foreground="{DynamicResource Accent.Default}"
-                           HorizontalAlignment="Right"
-                           TextAlignment="Right"
-                           MinWidth="64" />
-              </DockPanel>
-              <Slider x:Name="NitsSlider"
-                      Style="{StaticResource Field.Slider}"
-                      Minimum="120" Maximum="480"
-                      TickFrequency="10"
-                      IsSnapToTickEnabled="True"
-                      ValueChanged="OnNitsChanged" />
+              <CheckBox x:Name="AutoWhiteToggle"
+                        Style="{StaticResource Field.Toggle}"
+                        Content="Match each monitor's Windows SDR brightness"
+                        Checked="OnAutoWhiteChanged"
+                        Unchecked="OnAutoWhiteChanged"
+                        Margin="0,0,0,14" />
+              <StackPanel x:Name="ManualWhite">
+                <DockPanel Margin="0,0,0,2">
+                  <TextBlock Text="SDR white level" Style="{StaticResource Type.Body}" />
+                  <TextBlock x:Name="NitsLabel"
+                             Style="{StaticResource Type.Body}"
+                             Foreground="{DynamicResource Accent.Default}"
+                             HorizontalAlignment="Right"
+                             TextAlignment="Right"
+                             MinWidth="64" />
+                </DockPanel>
+                <Slider x:Name="NitsSlider"
+                        Style="{StaticResource Field.Slider}"
+                        Minimum="120" Maximum="480"
+                        TickFrequency="10"
+                        IsSnapToTickEnabled="True"
+                        ValueChanged="OnNitsChanged" />
+              </StackPanel>
               <TextBlock Style="{StaticResource Type.Caption}"
-                         Text="Higher values darken the result. Match this to the SDR content brightness slider in Windows HDR settings — 240–280 suits most displays." />
+                         Text="HDRSnip reads the SDR content brightness Windows uses for the monitor being captured. Turn this off to set a fixed level: higher values darken the result." />
             </StackPanel>
           </StackPanel>
         </Border>

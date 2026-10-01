@@ -8,7 +8,6 @@ using HDRSnip.Capture;
 using HDRSnip.Editing;
 using HDRSnip.Services;
 using Microsoft.Win32;
-using DataObject = System.Windows.DataObject;
 
 namespace HDRSnip.Views;
 
@@ -46,6 +45,7 @@ public partial class EditorWindow : Window
         Markup.TextEditingChanged += UpdateHint;
 
         SourceInitialized += (_, _) => ThemeService.ApplyToWindow(this);
+        DpiChanged += (_, _) => ApplyZoom();
         Load(result);
     }
 
@@ -69,9 +69,9 @@ public partial class EditorWindow : Window
         UpdateChrome();
         SyncStyle();
 
-        Status.Text = string.IsNullOrEmpty(_savedPath)
-            ? "Copied to clipboard"
-            : $"Saved to {_savedPath}";
+        Status.Text = _savedPath is not null ? $"Saved to {_savedPath}"
+            : result.SaveFailed ? "Auto-save failed — check the save folder, or use Save as"
+            : "Copied to clipboard";
     }
 
     public void ShowStatus(string text) => Status.Text = text;
@@ -84,63 +84,42 @@ public partial class EditorWindow : Window
     private void OnCopy(object sender, RoutedEventArgs e)
     {
         Markup.CommitPendingEdits();
-        var image = Flattened;
-
-        var data = new DataObject();
-        data.SetImage(image);
-
-        try
+        if (ClipboardService.TryCopy(Flattened))
         {
-            var png = new MemoryStream();
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(image));
-            encoder.Save(png);
-            png.Position = 0;
-            data.SetData("PNG", png, false);
-        }
-        catch (Exception ex)
-        {
-            // The DIB alone still pastes everywhere that matters.
-            App.LogError("EditorCopyPng", ex);
-        }
-
-        try
-        {
-            Clipboard.SetDataObject(data, copy: true);
             _dirty = false;
             Status.Text = "Copied to clipboard";
         }
-        catch (Exception ex)
+        else
         {
-            App.LogError("EditorCopy", ex);
             Status.Text = "Another app is holding the clipboard — try again";
         }
     }
 
-    private void OnSave(object sender, RoutedEventArgs e) => SaveTo(_savedPath ?? _capture.BuildSavePath());
+    private void OnSave(object sender, RoutedEventArgs e) => SaveTo(_savedPath);
 
     private void OnSaveAs(object sender, RoutedEventArgs e)
     {
         Markup.CommitPendingEdits();
-        var suggested = _savedPath ?? _capture.BuildSavePath();
         var dialog = new SaveFileDialog
         {
             Filter = "PNG image|*.png",
             DefaultExt = ".png",
-            FileName = Path.GetFileName(suggested),
-            InitialDirectory = Path.GetDirectoryName(suggested)
+            FileName = _savedPath is null ? $"HDRSnip_{DateTime.Now:yyyyMMdd_HHmmss}.png" : Path.GetFileName(_savedPath),
+            InitialDirectory = Path.GetDirectoryName(_savedPath) ?? App.Config.SaveFolder
         };
 
         if (dialog.ShowDialog(this) == true)
             SaveTo(dialog.FileName);
     }
 
-    private void SaveTo(string path)
+    /// <summary>Saves to <paramref name="path"/>, or to a new file in the captures folder when it is null.</summary>
+    private void SaveTo(string? path)
     {
         Markup.CommitPendingEdits();
         try
         {
-            CaptureService.SavePng(Flattened, path);
+            path ??= _capture.BuildSavePath();
+            ImageCodec.Save(Flattened, path);
             _savedPath = path;
             _dirty = false;
             Status.Text = $"Saved to {path}";
@@ -230,6 +209,7 @@ public partial class EditorWindow : Window
                 MarkupTool.Rectangle => "Drag to draw · hold Shift for a square",
                 MarkupTool.Ellipse => "Drag to draw · hold Shift for a circle",
                 MarkupTool.Text => "Click where the text should start",
+                MarkupTool.Number => "Click to place the next number",
                 MarkupTool.Pixelate => "Drag over anything that should not be readable",
                 MarkupTool.Crop => "Drag the handles or draw a new area · Enter applies · Esc cancels",
                 _ => string.Empty
@@ -327,7 +307,7 @@ public partial class EditorWindow : Window
     private void UpdateSizePreview()
     {
         var brush = new SolidColorBrush(Markup.Color);
-        bool text = Markup.StyleTarget == MarkupTool.Text;
+        bool text = Markup.StyleTarget is MarkupTool.Text or MarkupTool.Number;
 
         SizePreviewText.Visibility = text ? Visibility.Visible : Visibility.Collapsed;
         SizePreviewStroke.Visibility = text ? Visibility.Collapsed : Visibility.Visible;
@@ -402,32 +382,38 @@ public partial class EditorWindow : Window
         ApplyZoom();
     }
 
+    /// <summary>
+    /// Zoom is in screen pixels per image pixel, so 100% is pixel-exact on a
+    /// scaled display too; the canvas itself lays out in DIPs.
+    /// </summary>
     private void ApplyZoom()
     {
         if (_result is null)
             return;
 
-        double scale = _zoom ?? FitScale();
+        double zoom = _zoom ?? FitScale();
+        double scale = zoom / VisualTreeHelper.GetDpi(this).DpiScaleX;
         Markup.LayoutTransform = new ScaleTransform(scale, scale);
         Markup.ViewScale = scale;
 
         // Crisp pixels when peering in, smooth resampling when pulling back.
         RenderOptions.SetBitmapScalingMode(Markup,
-            scale >= 2 ? BitmapScalingMode.NearestNeighbor : BitmapScalingMode.HighQuality);
+            zoom >= 2 ? BitmapScalingMode.NearestNeighbor : BitmapScalingMode.HighQuality);
 
-        ZoomLabel.Text = _zoom is null ? "Fit" : $"{Math.Round(scale * 100)}%";
+        ZoomLabel.Text = _zoom is null ? "Fit" : $"{Math.Round(zoom * 100)}%";
     }
 
-    /// <summary>Largest scale that fits the viewport, never enlarging past 1:1.</summary>
+    /// <summary>Largest zoom that fits the viewport, never enlarging past 1:1.</summary>
     private double FitScale()
     {
         const double padding = 56 + 2;
-        double available = Math.Max(Viewport.ActualWidth - padding, 1);
-        double availableHeight = Math.Max(Viewport.ActualHeight - padding, 1);
+        double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        double width = Math.Max(Viewport.ActualWidth - padding, 1) * dpi;
+        double height = Math.Max(Viewport.ActualHeight - padding, 1) * dpi;
 
         return Math.Min(1.0, Math.Min(
-            available / Math.Max(Markup.Width, 1),
-            availableHeight / Math.Max(Markup.Height, 1)));
+            width / Math.Max(Markup.Width, 1),
+            height / Math.Max(Markup.Height, 1)));
     }
 
     // ------------------------------------------------------------ keyboard
@@ -502,6 +488,7 @@ public partial class EditorWindow : Window
             case Key.R when !control && !alt: Markup.Tool = MarkupTool.Rectangle; break;
             case Key.E when !control && !alt: Markup.Tool = MarkupTool.Ellipse; break;
             case Key.T when !control && !alt: Markup.Tool = MarkupTool.Text; break;
+            case Key.N when !control && !alt: Markup.Tool = MarkupTool.Number; break;
             case Key.X when !control && !alt: Markup.Tool = MarkupTool.Pixelate; break;
             case Key.C when !control && !alt: Markup.Tool = MarkupTool.Crop; break;
             case Key.S when !control && !alt: OnOpenStyle(sender, e); break;

@@ -2,23 +2,14 @@ using System.Drawing;
 
 namespace HDRSnip.Capture;
 
-public sealed class MonitorInfo
-{
-    public required int OutputIndex { get; init; }
-    public required Rectangle Bounds { get; init; }
-    public required bool IsHdr { get; init; }
-}
+/// <param name="DeviceName">GDI name of the output (<c>\.\DISPLAY1</c>), the key Windows display settings use.</param>
+public sealed record MonitorInfo(int OutputIndex, Rectangle Bounds, bool IsHdr, string DeviceName);
 
 /// <summary>
-/// One captured desktop image.
+/// One captured desktop image, kept in the GPU's native half-float format all
+/// the way from the DXGI staging texture to the tone mapper.
 /// </summary>
-/// <remarks>
-/// Pixels stay in the GPU's native half-float format all the way from the DXGI
-/// staging texture to the tone mapper. Expanding to <c>float</c> would double
-/// every allocation and every byte crossing the daemon boundary for no added
-/// precision — the source is 16-bit either way.
-/// </remarks>
-public sealed class CapturedFrame
+public sealed record CapturedFrame
 {
     public required int Width { get; init; }
     public required int Height { get; init; }
@@ -33,4 +24,10 @@ public sealed class CapturedFrame
 
     /// <summary>Interleaved RGBA, <c>Width * Height * 4</c> half-floats.</summary>
     public required Half[] Rgba { get; init; }
+
+    /// <summary>
+    /// The monitor's Windows "SDR content brightness" at capture time, in nits,
+    /// when it could be read. This is the level SDR white was composited at.
+    /// </summary>
+    public double? SdrWhiteNits { get; init; }
 }

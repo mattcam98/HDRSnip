@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO.Pipes;
+using HDRSnip.Interop;
 
 namespace HDRSnip.Capture;
 
@@ -11,25 +13,29 @@ namespace HDRSnip.Capture;
 /// </summary>
 public sealed class CaptureDaemonClient : IDisposable
 {
-    public const string PipeName = "HDRSnip.CaptureDaemon.v2";
     public const string DaemonArgument = "--capture-daemon";
 
     private const int StartupBudgetMs = 6000;
     private const int MaxConsecutiveFailures = 2;
+
+    private static readonly string PipeName = PipeNameFor(Environment.ProcessId);
 
     private readonly object _gate = new();
     private Process? _daemon;
     private int _consecutiveFailures;
     private bool _disposed;
 
+    /// <summary>One pipe per tray process, so a daemon only ever serves the process that started it.</summary>
+    public static string PipeNameFor(int ownerPid) => $"HDRSnip.CaptureDaemon.{ownerPid}";
+
     /// <summary>False once the daemon has failed enough times to be written off for this session.</summary>
     public bool IsUsable => _consecutiveFailures < MaxConsecutiveFailures;
 
     public void EnsureStarted()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         lock (_gate)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (_daemon is { HasExited: false })
                 return;
 
@@ -40,14 +46,30 @@ public sealed class CaptureDaemonClient : IDisposable
             _daemon = Process.Start(new ProcessStartInfo
             {
                 FileName = executable,
-                ArgumentList = { DaemonArgument },
+                ArgumentList = { DaemonArgument, Environment.ProcessId.ToString(CultureInfo.InvariantCulture) },
                 CreateNoWindow = true,
                 UseShellExecute = false,
                 WorkingDirectory = AppContext.BaseDirectory
             }) ?? throw new InvalidOperationException("Failed to start the capture daemon.");
 
-            WaitUntilReady();
+            WaitUntilReady(_daemon);
         }
+    }
+
+    /// <summary>
+    /// Starts the daemon and has it build its duplication session for the monitor
+    /// under the cursor, so the first snip pays for neither.
+    /// </summary>
+    public void Warm()
+    {
+        EnsureStarted();
+        if (DisplayEnumerator.FindAtPoint(Native.GetCursorPosition()) is not { } monitor)
+            return;
+
+        using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
+        pipe.Connect(3000);
+        FrameChannel.WriteLine(pipe, $"WARM {monitor.OutputIndex}");
+        FrameChannel.ReadLine(pipe, timeoutMs: 20_000);
     }
 
     public CapturedFrame? TryCapture(MonitorInfo monitor)
@@ -69,7 +91,10 @@ public sealed class CaptureDaemonClient : IDisposable
 
         try
         {
-            Restart();
+            lock (_gate)
+                KillDaemon();
+
+            EnsureStarted();
             var frame = CaptureOnce(monitor);
             _consecutiveFailures = 0;
             return frame;
@@ -82,15 +107,15 @@ public sealed class CaptureDaemonClient : IDisposable
         }
     }
 
-    private void WaitUntilReady()
+    private static void WaitUntilReady(Process daemon)
     {
         var clock = Stopwatch.StartNew();
         Exception? last = null;
 
         while (clock.ElapsedMilliseconds < StartupBudgetMs)
         {
-            if (_daemon!.HasExited)
-                throw new InvalidOperationException($"Capture daemon exited during startup (code {_daemon.ExitCode}).");
+            if (daemon.HasExited)
+                throw new InvalidOperationException($"Capture daemon exited during startup (code {daemon.ExitCode}).");
 
             try
             {
@@ -112,7 +137,7 @@ public sealed class CaptureDaemonClient : IDisposable
         throw new TimeoutException("Capture daemon pipe never became ready.", last);
     }
 
-    private CapturedFrame CaptureOnce(MonitorInfo monitor)
+    private static CapturedFrame CaptureOnce(MonitorInfo monitor)
     {
         using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
         pipe.Connect(3000);
@@ -136,16 +161,6 @@ public sealed class CaptureDaemonClient : IDisposable
         }
     }
 
-    private void Restart()
-    {
-        lock (_gate)
-        {
-            KillDaemon();
-        }
-
-        EnsureStarted();
-    }
-
     private void KillDaemon()
     {
         try
@@ -161,31 +176,24 @@ public sealed class CaptureDaemonClient : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-
         lock (_gate)
         {
+            if (_disposed) return;
+            _disposed = true;
+
             try
             {
                 if (_daemon is { HasExited: false })
                 {
-                    try
-                    {
-                        using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
-                        pipe.Connect(500);
-                        FrameChannel.WriteLine(pipe, "QUIT");
-                    }
-                    catch { /* fall through to Kill */ }
-
-                    if (!_daemon.WaitForExit(1000))
-                        _daemon.Kill(entireProcessTree: true);
+                    using var pipe = new NamedPipeClientStream(".", PipeName, PipeDirection.InOut);
+                    pipe.Connect(500);
+                    FrameChannel.WriteLine(pipe, "QUIT");
+                    _daemon.WaitForExit(1000);
                 }
             }
-            catch { /* shutdown must not throw */ }
+            catch { /* fall through to Kill */ }
 
-            _daemon?.Dispose();
-            _daemon = null;
+            KillDaemon();
         }
     }
 }

@@ -20,19 +20,12 @@ public static class DisplayEnumerator
                 {
                     using (output)
                     {
-                        var desc = output.Description;
-                        var coords = desc.DesktopCoordinates;
-
-                        monitors.Add(new MonitorInfo
-                        {
-                            OutputIndex = outputIndex++,
-                            Bounds = new Rectangle(
-                                coords.Left,
-                                coords.Top,
-                                coords.Right - coords.Left,
-                                coords.Bottom - coords.Top),
-                            IsHdr = IsAdvancedColorActive(output)
-                        });
+                        var coords = output.Description.DesktopCoordinates;
+                        monitors.Add(new MonitorInfo(
+                            outputIndex++,
+                            Rectangle.FromLTRB(coords.Left, coords.Top, coords.Right, coords.Bottom),
+                            IsAdvancedColorActive(output),
+                            output.Description.DeviceName));
                     }
                 }
             }

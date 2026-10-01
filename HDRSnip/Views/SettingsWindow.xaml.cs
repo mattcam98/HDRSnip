@@ -15,6 +15,8 @@ public partial class SettingsWindow : Window
     {
         InitializeComponent();
         _config = config;
+        // The design height is taller than a small or heavily scaled display.
+        Height = Math.Min(Height, SystemParameters.WorkArea.Height);
 
         SourceInitialized += async (_, _) =>
         {
@@ -43,6 +45,7 @@ public partial class SettingsWindow : Window
             _ => 0
         };
 
+        AutoWhiteToggle.IsChecked = config.AutoSdrWhite;
         NitsSlider.Value = config.SdrWhiteNits;
         NitsLabel.Text = $"{(int)config.SdrWhiteNits} nits";
 
@@ -66,6 +69,16 @@ public partial class SettingsWindow : Window
             NitsRow.IsEnabled = ToneMapBox.SelectedIndex == 0;
     }
 
+    private void OnAutoWhiteChanged(object sender, RoutedEventArgs e)
+    {
+        if (ManualWhite is null)
+            return;
+
+        bool manual = AutoWhiteToggle.IsChecked != true;
+        ManualWhite.IsEnabled = manual;
+        ManualWhite.Opacity = manual ? 1 : 0.4;
+    }
+
     private void OnBrowse(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog
@@ -82,15 +95,17 @@ public partial class SettingsWindow : Window
 
     private async void OnSave(object sender, RoutedEventArgs e)
     {
-        var folder = SaveFolderBox.Text.Trim();
-        if (folder.Length == 0)
-            folder = new AppConfig().SaveFolder;
+        // The autostart call below can await a Windows consent prompt; a second Save
+        // click in that gap would run all of this again.
+        IsEnabled = false;
 
-        _config.SaveFolder = folder;
+        var folder = SaveFolderBox.Text.Trim();
+        _config.SaveFolder = folder.Length == 0 ? AppConfig.DefaultSaveFolder : folder;
         _config.CopyToClipboard = CopyToggle.IsChecked == true;
         _config.AutoSave = AutoSaveToggle.IsChecked == true;
         _config.OpenEditorAfterCapture = EditorToggle.IsChecked == true;
         _config.StartWithWindows = AutostartToggle.IsChecked == true;
+        _config.AutoSdrWhite = AutoWhiteToggle.IsChecked == true;
         _config.SdrWhiteNits = NitsSlider.Value;
         _config.ToneMapMethod = ToneMapBox.SelectedIndex switch
         {
@@ -130,7 +145,6 @@ public partial class SettingsWindow : Window
             }
         }
 
-        DialogResult = true;
         Close();
     }
 }

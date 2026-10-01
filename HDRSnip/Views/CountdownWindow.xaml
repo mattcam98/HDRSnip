@@ -1,0 +1,28 @@
+<Window x:Class="HDRSnip.Views.CountdownWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HDRSnip"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Focusable="False"
+        IsHitTestVisible="False"
+        Topmost="True"
+        SizeToContent="WidthAndHeight"
+        Background="Transparent"
+        AllowsTransparency="True">
+
+  <Border Margin="24,16,24,24"
+          Background="{DynamicResource Surface.Overlay}"
+          BorderBrush="{DynamicResource Stroke.Default}"
+          BorderThickness="1"
+          CornerRadius="{StaticResource Radius.Flyout}"
+          Padding="18,10">
+    <StackPanel Orientation="Horizontal">
+      <TextBlock Style="{StaticResource Glyph}" Text="&#xE916;" Margin="0,0,10,0" VerticalAlignment="Center"
+                 Foreground="{DynamicResource Accent.Default}" />
+      <TextBlock x:Name="Label" Style="{StaticResource Type.Body}" VerticalAlignment="Center" />
+    </StackPanel>
+  </Border>
+</Window>

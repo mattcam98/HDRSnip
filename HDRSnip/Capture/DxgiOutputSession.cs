@@ -13,7 +13,8 @@ namespace HDRSnip.Capture;
 /// Long-lived DXGI duplication session for one monitor. The D3D device, the
 /// duplication and the staging texture are all reused across snips — recreating
 /// them costs hundreds of milliseconds and is the difference between a snip that
-/// feels instant and one that stutters.
+/// feels instant and one that stutters. Not thread-safe: the daemon serves one
+/// request at a time.
 /// </summary>
 public sealed class DxgiOutputSession : IDisposable
 {
@@ -28,7 +29,6 @@ public sealed class DxgiOutputSession : IDisposable
     private const int GrabBudgetMs = 3000;
     private const int MaxBlankPresents = 5;
 
-    private readonly MonitorInfo _monitor;
     private IDXGIAdapter1? _adapter;
     private IDXGIOutput? _output;
     private ID3D11Device? _device;
@@ -37,16 +37,14 @@ public sealed class DxgiOutputSession : IDisposable
     private ID3D11Texture2D? _staging;
 
     private bool _haveDesktopImage;
-    private Half[]? _lastPixels;
-    private int _lastWidth;
-    private int _lastHeight;
-    private bool _lastWasHdr;
+    private int _stagingWidth;
+    private int _stagingHeight;
     private bool _disposed;
 
-    public DxgiOutputSession(MonitorInfo monitor) => _monitor = monitor;
+    public DxgiOutputSession(MonitorInfo monitor) => Monitor = monitor;
 
-    public bool Matches(MonitorInfo monitor) =>
-        _monitor.OutputIndex == monitor.OutputIndex && _monitor.Bounds == monitor.Bounds;
+    /// <summary>The output and mode (bounds, HDR state) this session was created for.</summary>
+    public MonitorInfo Monitor { get; }
 
     public CapturedFrame Grab()
     {
@@ -68,15 +66,16 @@ public sealed class DxgiOutputSession : IDisposable
                 continue;
             }
 
-            uint waitMs = _haveDesktopImage ? 50u : 200u;
+            // Updates since the last release are queued and returned at once, so a
+            // warm session never needs to wait: nothing pending means nothing changed.
+            uint waitMs = _haveDesktopImage ? 0u : 200u;
             var result = _duplication!.AcquireNextFrame(waitMs, out var frameInfo, out IDXGIResource? resource);
             if (result.Failure)
             {
                 if (result.Code == DxgiErrorWaitTimeout)
                 {
-                    // A static desktop produces no presents; the cached image is current.
-                    if (_haveDesktopImage && _lastPixels is not null)
-                        return FrameFromCache();
+                    if (_haveDesktopImage)
+                        return MakeFrame(ReadStaging());
 
                     TryDwmFlush();
                     continue;
@@ -101,28 +100,13 @@ public sealed class DxgiOutputSession : IDisposable
                     continue;
 
                 using var texture = resource.QueryInterface<ID3D11Texture2D>();
-                var desc = texture.Description;
-                int width = (int)desc.Width;
-                int height = (int)desc.Height;
-                EnsureStaging(desc);
+                EnsureStaging(texture.Description);
 
                 _context!.CopyResource(_staging!, texture);
                 _duplication.ReleaseFrame();
                 released = true;
-                resource.Dispose();
-                resource = null;
 
-                var mapped = _context.Map(_staging!, 0, MapMode.Read, MapFlags.None);
-                Half[] pixels;
-                try
-                {
-                    pixels = ReadStaging(mapped, width, height);
-                }
-                finally
-                {
-                    _context.Unmap(_staging!, 0);
-                }
-
+                var pixels = ReadStaging();
                 if (IsLikelyBlank(pixels))
                 {
                     // A warm session that goes black has a dead duplication surface
@@ -139,13 +123,8 @@ public sealed class DxgiOutputSession : IDisposable
                         continue;
                 }
 
-                bool wasHdr = _monitor.IsHdr || ToneMapper.HasHdrPeak(pixels);
                 _haveDesktopImage = true;
-                _lastPixels = pixels;
-                _lastWidth = width;
-                _lastHeight = height;
-                _lastWasHdr = wasHdr;
-                return MakeFrame(pixels, width, height, wasHdr);
+                return MakeFrame(pixels);
             }
             finally
             {
@@ -158,51 +137,58 @@ public sealed class DxgiOutputSession : IDisposable
             }
         }
 
-        if (_haveDesktopImage && _lastPixels is not null)
-            return FrameFromCache();
+        if (_haveDesktopImage)
+            return MakeFrame(ReadStaging());
 
         throw new InvalidOperationException("Timed out waiting for a desktop frame.");
     }
 
     /// <summary>
-    /// Copies the staging texture row by row. The source is already
-    /// R16G16B16A16_FLOAT, so each row is a straight memcpy — no per-sample
-    /// conversion, which is what keeps a 4K grab in single-digit milliseconds.
+    /// Copies the staging texture, which always holds the last desktop image, so
+    /// it doubles as the cache for a static desktop. The source is already
+    /// R16G16B16A16_FLOAT: each row is a straight memcpy with no per-sample
+    /// conversion, which keeps a 4K grab in single-digit milliseconds.
     /// </summary>
-    private static unsafe Half[] ReadStaging(MappedSubresource mapped, int width, int height)
+    private unsafe Half[] ReadStaging()
     {
-        var pixels = new Half[width * height * 4];
-        int rowBytes = width * 4 * sizeof(ushort);
-        int rowPitch = (int)mapped.RowPitch;
-        byte* source = (byte*)mapped.DataPointer;
-
-        fixed (Half* destination = pixels)
+        var mapped = _context!.Map(_staging!, 0, MapMode.Read, MapFlags.None);
+        try
         {
-            if (rowPitch == rowBytes)
-            {
-                Buffer.MemoryCopy(source, destination, (long)rowBytes * height, (long)rowBytes * height);
-            }
-            else
-            {
-                byte* target = (byte*)destination;
-                for (int y = 0; y < height; y++)
-                    Buffer.MemoryCopy(source + (long)y * rowPitch, target + (long)y * rowBytes, rowBytes, rowBytes);
-            }
-        }
+            var pixels = new Half[_stagingWidth * _stagingHeight * 4];
+            int rowBytes = _stagingWidth * 4 * sizeof(ushort);
+            int rowPitch = (int)mapped.RowPitch;
+            byte* source = (byte*)mapped.DataPointer;
 
-        return pixels;
+            fixed (Half* destination = pixels)
+            {
+                if (rowPitch == rowBytes)
+                {
+                    long bytes = (long)rowBytes * _stagingHeight;
+                    Buffer.MemoryCopy(source, destination, bytes, bytes);
+                }
+                else
+                {
+                    byte* target = (byte*)destination;
+                    for (int y = 0; y < _stagingHeight; y++)
+                        Buffer.MemoryCopy(source + (long)y * rowPitch, target + (long)y * rowBytes, rowBytes, rowBytes);
+                }
+            }
+
+            return pixels;
+        }
+        finally
+        {
+            _context.Unmap(_staging!, 0);
+        }
     }
 
-    private CapturedFrame FrameFromCache() =>
-        MakeFrame(_lastPixels!, _lastWidth, _lastHeight, _lastWasHdr);
-
-    private CapturedFrame MakeFrame(Half[] pixels, int width, int height, bool wasHdr) =>
+    private CapturedFrame MakeFrame(Half[] pixels) =>
         new()
         {
-            Width = width,
-            Height = height,
-            MonitorBounds = _monitor.Bounds,
-            WasHdr = wasHdr,
+            Width = _stagingWidth,
+            Height = _stagingHeight,
+            MonitorBounds = Monitor.Bounds,
+            WasHdr = Monitor.IsHdr || ToneMapper.HasHdrPeak(pixels),
             IsLinearScRgb = true,
             Rgba = pixels
         };
@@ -251,8 +237,8 @@ public sealed class DxgiOutputSession : IDisposable
     private void CreateSession()
     {
         using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-        if (!DisplayEnumerator.TryGetOutput(factory, _monitor.OutputIndex, out _adapter!, out _output!))
-            throw new InvalidOperationException($"Output {_monitor.OutputIndex} not found.");
+        if (!DisplayEnumerator.TryGetOutput(factory, Monitor.OutputIndex, out _adapter!, out _output!))
+            throw new InvalidOperationException($"Output {Monitor.OutputIndex} not found.");
 
         FeatureLevel[] featureLevels =
         [
@@ -279,12 +265,15 @@ public sealed class DxgiOutputSession : IDisposable
 
     private void EnsureStaging(Texture2DDescription source)
     {
-        if (_staging is not null &&
-            _staging.Description.Width == source.Width &&
-            _staging.Description.Height == source.Height)
+        int width = (int)source.Width;
+        int height = (int)source.Height;
+        if (_staging is not null && _stagingWidth == width && _stagingHeight == height)
             return;
 
         DisposeQuiet(ref _staging);
+        _haveDesktopImage = false;
+        _stagingWidth = width;
+        _stagingHeight = height;
         _staging = _device!.CreateTexture2D(new Texture2DDescription
         {
             Width = source.Width,
@@ -303,7 +292,6 @@ public sealed class DxgiOutputSession : IDisposable
     private void ResetSession()
     {
         _haveDesktopImage = false;
-        _lastPixels = null;
         DisposeQuiet(ref _staging);
         DisposeQuiet(ref _duplication);
         DisposeQuiet(ref _context);

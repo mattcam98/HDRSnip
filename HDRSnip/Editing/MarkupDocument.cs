@@ -15,6 +15,7 @@ public enum MarkupTool
     Rectangle,
     Ellipse,
     Text,
+    Number,
     Pixelate,
     Crop
 }
@@ -42,14 +43,6 @@ public sealed record MarkupDocument(ImmutableArray<Annotation> Annotations, Int3
     public MarkupDocument Replace(Annotation old, Annotation replacement) =>
         this with { Annotations = Annotations.Replace(old, replacement) };
 
-    /// <summary>Draws the source and every mark, then trims to the crop.</summary>
-    public void Render(DrawingContext dc, BitmapSource source)
-    {
-        dc.DrawImage(source, new Rect(0, 0, source.PixelWidth, source.PixelHeight));
-        foreach (var annotation in Annotations)
-            annotation.Draw(dc, source);
-    }
-
     /// <summary>
     /// Flattens the document into a plain bitmap for the clipboard or disk.
     /// Returns the source itself when there is nothing to flatten, so an
@@ -64,15 +57,24 @@ public sealed record MarkupDocument(ImmutableArray<Annotation> Annotations, Int3
         using (var dc = visual.RenderOpen())
         {
             dc.PushTransform(new TranslateTransform(-Crop.X, -Crop.Y));
-            Render(dc, source);
+            dc.DrawImage(source, new Rect(0, 0, source.PixelWidth, source.PixelHeight));
+            foreach (var annotation in Annotations)
+                annotation.Draw(dc, source);
             dc.Pop();
         }
 
+        // Rendered at 96 DPI so one DIP is one pixel, then re-tagged with the
+        // source DPI: a marked-up capture must paste at the same size as a plain one.
         var target = new RenderTargetBitmap(Crop.Width, Crop.Height, 96, 96, PixelFormats.Pbgra32);
         target.Render(visual);
 
         // Straight alpha keeps every consumer happy: DIB, PNG and any future encoder.
-        var flat = new FormatConvertedBitmap(target, PixelFormats.Bgra32, null, 0);
+        int stride = Crop.Width * 4;
+        var pixels = new byte[stride * Crop.Height];
+        new FormatConvertedBitmap(target, PixelFormats.Bgra32, null, 0).CopyPixels(pixels, stride, 0);
+
+        var flat = BitmapSource.Create(
+            Crop.Width, Crop.Height, source.DpiX, source.DpiY, PixelFormats.Bgra32, null, pixels, stride);
         flat.Freeze();
         return flat;
     }

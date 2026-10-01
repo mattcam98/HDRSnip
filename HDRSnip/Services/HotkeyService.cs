@@ -14,20 +14,16 @@ public sealed class HotkeyService(Window host) : IDisposable
 {
     private const int WmHotkey = 0x0312;
 
-    private readonly Window _host = host;
     private readonly Dictionary<int, Action> _handlers = [];
+    private readonly List<Hotkey> _conflicts = [];
     private HwndSource? _source;
     private int _nextId = 1;
-    private bool _disposed;
 
     /// <summary>Hotkeys that could not be claimed, for surfacing in the UI.</summary>
-    public IReadOnlyList<Hotkey> Conflicts { get; private set; } = [];
-
-    private readonly List<Hotkey> _conflicts = [];
+    public IReadOnlyList<Hotkey> Conflicts => _conflicts;
 
     public bool TryRegister(Hotkey hotkey, Action handler)
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
         if (hotkey.IsEmpty)
             return false;
 
@@ -37,7 +33,6 @@ public sealed class HotkeyService(Window host) : IDisposable
         if (!Native.RegisterHotKey(handle, id, (uint)hotkey.Modifiers, hotkey.VirtualKey))
         {
             _conflicts.Add(hotkey);
-            Conflicts = _conflicts.AsReadOnly();
             return false;
         }
 
@@ -47,32 +42,27 @@ public sealed class HotkeyService(Window host) : IDisposable
 
     public void UnregisterAll()
     {
-        var handle = new WindowInteropHelper(_host).Handle;
-        if (handle != IntPtr.Zero)
+        if (_source is { IsDisposed: false })
         {
             foreach (var id in _handlers.Keys)
-                Native.UnregisterHotKey(handle, id);
+                Native.UnregisterHotKey(_source.Handle, id);
         }
 
         _handlers.Clear();
         _conflicts.Clear();
-        Conflicts = [];
     }
 
     private IntPtr EnsureAttached()
     {
-        var handle = new WindowInteropHelper(_host).Handle;
-        if (handle == IntPtr.Zero)
-            throw new InvalidOperationException("Host window handle is not ready.");
-
         if (_source is null)
         {
+            var handle = new WindowInteropHelper(host).Handle;
             _source = HwndSource.FromHwnd(handle)
-                      ?? throw new InvalidOperationException("Host window has no HWND source.");
+                      ?? throw new InvalidOperationException("Host window handle is not ready.");
             _source.AddHook(WndProc);
         }
 
-        return handle;
+        return _source.Handle;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -81,7 +71,7 @@ public sealed class HotkeyService(Window host) : IDisposable
         {
             handled = true;
             // Return to the message loop before doing any capture work.
-            _host.Dispatcher.BeginInvoke(action);
+            host.Dispatcher.BeginInvoke(action);
         }
 
         return IntPtr.Zero;
@@ -89,8 +79,6 @@ public sealed class HotkeyService(Window host) : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
         UnregisterAll();
         _source?.RemoveHook(WndProc);
         _source = null;

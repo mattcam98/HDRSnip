@@ -103,14 +103,14 @@ public partial class App : Application
 
         try
         {
+            var fullPath = Path.GetFullPath(imagePath);
             var image = new BitmapImage();
             image.BeginInit();
             image.CacheOption = BitmapCacheOption.OnLoad;
-            image.UriSource = new Uri(Path.GetFullPath(imagePath));
+            image.UriSource = new Uri(fullPath);
             image.EndInit();
             image.Freeze();
 
-            var fullPath = Path.GetFullPath(imagePath);
             var editor = new EditorWindow(
                 new CaptureResult(image, WasHdr: false, SavedPath: fullPath),
                 new CaptureService(Config));
@@ -161,7 +161,10 @@ public partial class App : Application
         catch { /* the UI itself is unhappy; the log already has it */ }
     }
 
-    /// <summary>Appends to %LOCALAPPDATA%\HDRSnip\errors.log. Never throws.</summary>
+    /// <summary>
+    /// Appends to %LOCALAPPDATA%\HDRSnip\errors.log. Never throws, and needs no
+    /// <see cref="App"/> instance, so the capture daemon uses it too.
+    /// </summary>
     public static void LogError(string source, Exception ex)
     {
         try

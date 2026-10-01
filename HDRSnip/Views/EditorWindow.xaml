@@ -28,8 +28,7 @@
                   CornerRadius="{StaticResource Radius.Small}"
                   Padding="8,3"
                   VerticalAlignment="Center">
-            <TextBlock x:Name="HdrBadgeText"
-                       Style="{StaticResource Type.Caption}"
+            <TextBlock Style="{StaticResource Type.Caption}"
                        Foreground="{DynamicResource Accent.Default}"
                        Text="HDR tone-mapped" />
           </Border>
@@ -144,6 +143,11 @@
           </RadioButton>
           <RadioButton Style="{StaticResource Tool.Button}" GroupName="Tool" Tag="Text" Checked="OnToolChecked" ToolTip="Text (T)">
             <TextBlock Style="{StaticResource Glyph.Tool}" Text="&#xE8D2;" />
+          </RadioButton>
+          <RadioButton Style="{StaticResource Tool.Button}" GroupName="Tool" Tag="Number" Checked="OnToolChecked"
+                       ToolTip="Numbered step (N) — each click places the next number">
+            <Path Style="{StaticResource Icon.Tool}" StrokeThickness="1.4"
+                  Data="M 8,1.5 A 6.5,6.5 0 1 1 8,14.5 A 6.5,6.5 0 1 1 8,1.5 Z M 6.6,6 L 8.4,4.8 V 11.2" />
           </RadioButton>
           <RadioButton Style="{StaticResource Tool.Button}" GroupName="Tool" Tag="Pixelate" Checked="OnToolChecked"
                        ToolTip="Pixelate (X) — hide something sensitive">

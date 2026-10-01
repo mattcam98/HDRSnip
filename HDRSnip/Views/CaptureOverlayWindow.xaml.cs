@@ -14,6 +14,7 @@ namespace HDRSnip.Views;
 /// Full-screen selection overlay drawn over a frozen capture of the monitor.
 /// Freezing first is what makes the selection honest: what you drag over is
 /// exactly what gets cropped, even if the desktop keeps animating underneath.
+/// Dragging selects a region; a plain click takes the window under the cursor.
 /// </summary>
 public partial class CaptureOverlayWindow : Window
 {
@@ -22,6 +23,9 @@ public partial class CaptureOverlayWindow : Window
     private const double BadgeGap = 10;
 
     private readonly CapturedFrame _frame;
+
+    /// <summary>Window bounds in frame pixels, front to back, as they were when the frame was grabbed.</summary>
+    private readonly List<Int32Rect> _windows = [];
     private Point _origin;
     private bool _dragging;
     private bool _hintDismissed;
@@ -29,10 +33,20 @@ public partial class CaptureOverlayWindow : Window
     /// <summary>The chosen region in frame pixels, or null if cancelled.</summary>
     public Int32Rect? Selection { get; private set; }
 
-    public CaptureOverlayWindow(CapturedFrame frame, BitmapSource preview)
+    public CaptureOverlayWindow(CapturedFrame frame, BitmapSource preview, IEnumerable<System.Drawing.Rectangle> windows)
     {
         _frame = frame;
         InitializeComponent();
+
+        foreach (var window in windows)
+        {
+            var visible = System.Drawing.Rectangle.Intersect(window, frame.MonitorBounds);
+            if (!visible.IsEmpty)
+            {
+                _windows.Add(new Int32Rect(
+                    visible.X - frame.MonitorBounds.Left, visible.Y - frame.MonitorBounds.Top, visible.Width, visible.Height));
+            }
+        }
 
         // DXGI bounds are physical pixels; WPF positions windows in DIPs.
         double scale = Native.GetMonitorScale(
@@ -59,6 +73,8 @@ public partial class CaptureOverlayWindow : Window
 
         Canvas.SetLeft(Hint, (ActualWidth - Hint.ActualWidth) / 2);
         Canvas.SetTop(Hint, Math.Max(24, ActualHeight * 0.06));
+
+        HighlightWindowAt(Mouse.GetPosition(this));
     }
 
     // ------------------------------------------------------------ interaction
@@ -72,18 +88,16 @@ public partial class CaptureOverlayWindow : Window
         _dragging = true;
         _origin = e.GetPosition(this);
         Selection = null;
-        SelectionBox.Visibility = Visibility.Visible;
-        Corners.Visibility = Visibility.Visible;
         CaptureMouse();
         UpdateSelection(_origin, _origin);
     }
 
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_dragging)
-            return;
-
-        UpdateSelection(_origin, e.GetPosition(this));
+        if (_dragging)
+            UpdateSelection(_origin, e.GetPosition(this));
+        else
+            HighlightWindowAt(e.GetPosition(this));
     }
 
     private void OnMouseUp(object sender, MouseButtonEventArgs e)
@@ -97,11 +111,18 @@ public partial class CaptureOverlayWindow : Window
         var region = Normalize(_origin, e.GetPosition(this));
         if (region.Width < MinimumDragDip || region.Height < MinimumDragDip)
         {
-            // Treat a stray click as "start again" rather than capturing one pixel.
-            SelectionBox.Visibility = Visibility.Collapsed;
-            Corners.Visibility = Visibility.Collapsed;
-            SizeBadge.Visibility = Visibility.Collapsed;
-            ShadeHole.Rect = Rect.Empty;
+            // A click without a drag takes the window under it; with no window
+            // there, start again rather than capturing one pixel.
+            if (WindowAt(_origin) is { } window)
+            {
+                Selection = window;
+                Close();
+            }
+            else
+            {
+                ShowSelection(Rect.Empty);
+            }
+
             return;
         }
 
@@ -139,9 +160,23 @@ public partial class CaptureOverlayWindow : Window
 
     // ------------------------------------------------------------ chrome
 
-    private void UpdateSelection(Point a, Point b)
+    private void UpdateSelection(Point a, Point b) => ShowSelection(Normalize(a, b), drawn: true);
+
+    private void HighlightWindowAt(Point position) =>
+        ShowSelection(WindowAt(position) is { } window ? ToDips(window) : Rect.Empty);
+
+    /// <summary>Outlines a region and punches it out of the dim. An empty region clears both.</summary>
+    private void ShowSelection(Rect region, bool drawn = false)
     {
-        var region = Normalize(a, b);
+        bool visible = drawn || !region.IsEmpty;
+        SelectionBox.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        Corners.Visibility = SelectionBox.Visibility;
+        if (!visible)
+        {
+            SizeBadge.Visibility = Visibility.Collapsed;
+            ShadeHole.Rect = Rect.Empty;
+            return;
+        }
 
         Canvas.SetLeft(SelectionBox, region.X);
         Canvas.SetTop(SelectionBox, region.Y);
@@ -218,6 +253,28 @@ public partial class CaptureOverlayWindow : Window
         int height = Math.Clamp((int)Math.Round(region.Height * scaleY), 1, _frame.Height - y);
 
         return new Int32Rect(x, y, width, height);
+    }
+
+    /// <summary>The frontmost window under a point, in frame pixels.</summary>
+    private Int32Rect? WindowAt(Point position)
+    {
+        int x = (int)(position.X * _frame.Width / Math.Max(ActualWidth, 1));
+        int y = (int)(position.Y * _frame.Height / Math.Max(ActualHeight, 1));
+
+        foreach (var window in _windows)
+        {
+            if (x >= window.X && x < window.X + window.Width && y >= window.Y && y < window.Y + window.Height)
+                return window;
+        }
+
+        return null;
+    }
+
+    private Rect ToDips(Int32Rect pixels)
+    {
+        double scaleX = Math.Max(ActualWidth, 1) / _frame.Width;
+        double scaleY = Math.Max(ActualHeight, 1) / _frame.Height;
+        return new Rect(pixels.X * scaleX, pixels.Y * scaleY, pixels.Width * scaleX, pixels.Height * scaleY);
     }
 
     private static Rect Normalize(Point a, Point b) =>

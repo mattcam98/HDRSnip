@@ -24,15 +24,21 @@ public enum SnipMode
 /// </summary>
 public sealed class AppConfig
 {
-    private const int CurrentVersion = 3;
+    private const int CurrentVersion = 4;
+    private const double DefaultSdrWhiteNits = 250;
 
-    public string SaveFolder { get; set; } =
+    public static string DefaultSaveFolder { get; } =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "HDRSnip");
+
+    public string SaveFolder { get; set; } = DefaultSaveFolder;
 
     public ToneMapMethod ToneMapMethod { get; set; } = ToneMapMethod.Windows;
 
     /// <summary>SDR paper white in nits (scRGB: 1.0 = 80 nits). Higher means a darker screenshot.</summary>
-    public double SdrWhiteNits { get; set; } = 250;
+    public double SdrWhiteNits { get; set; } = DefaultSdrWhiteNits;
+
+    /// <summary>Use the monitor's own Windows "SDR content brightness" instead of <see cref="SdrWhiteNits"/>.</summary>
+    public bool AutoSdrWhite { get; set; } = true;
 
     public bool CopyToClipboard { get; set; } = true;
 
@@ -94,6 +100,7 @@ public sealed class AppConfig
                 var config = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(ConfigPath), JsonOptions);
                 if (config is not null)
                 {
+                    config.Repair();
                     config.Migrate();
                     return config;
                 }
@@ -118,6 +125,15 @@ public sealed class AppConfig
         File.Move(temporary, ConfigPath, overwrite: true);
     }
 
+    /// <summary>A hand-edited file can parse and still hold values nothing downstream can use.</summary>
+    private void Repair()
+    {
+        if (string.IsNullOrWhiteSpace(SaveFolder))
+            SaveFolder = DefaultSaveFolder;
+        if (!double.IsFinite(SdrWhiteNits) || SdrWhiteNits <= 0)
+            SdrWhiteNits = DefaultSdrWhiteNits;
+    }
+
     private void Migrate()
     {
         if (ConfigVersion >= CurrentVersion)
@@ -126,6 +142,10 @@ public sealed class AppConfig
         // v2 moved to a notification-first flow rather than auto-opening the editor.
         if (ConfigVersion < 2)
             OpenEditorAfterCapture = false;
+
+        // v4 added automatic SDR white. A level someone tuned by hand stays in charge.
+        if (ConfigVersion < 4)
+            AutoSdrWhite = SdrWhiteNits == DefaultSdrWhiteNits;
 
         ConfigVersion = CurrentVersion;
         try { Save(); } catch { /* settings still work in memory */ }

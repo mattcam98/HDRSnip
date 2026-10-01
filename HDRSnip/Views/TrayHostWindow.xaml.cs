@@ -2,12 +2,11 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows;
-using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using HDRSnip.Capture;
 using HDRSnip.Models;
 using HDRSnip.Services;
 using Application = System.Windows.Application;
-using DataObject = System.Windows.DataObject;
 using MessageBox = System.Windows.MessageBox;
 
 namespace HDRSnip.Views;
@@ -23,8 +22,9 @@ public partial class TrayHostWindow : Window
 
     private readonly AppConfig _config;
     private readonly CaptureService _capture;
-    private HotkeyService? _hotkeys;
+    private readonly HotkeyService _hotkeys;
     private EditorWindow? _editor;
+    private SettingsWindow? _settings;
     private CaptureResult? _lastCapture;
     private bool _busy;
 
@@ -36,6 +36,7 @@ public partial class TrayHostWindow : Window
         InitializeComponent();
         _config = App.Config;
         _capture = new CaptureService(_config);
+        _hotkeys = new HotkeyService(this);
 
         ApplyTrayIcon();
         NotificationService.OpenEditorRequested += OpenLastInEditor;
@@ -46,7 +47,7 @@ public partial class TrayHostWindow : Window
     private void OnClosed(object? sender, EventArgs e)
     {
         NotificationService.OpenEditorRequested -= OpenLastInEditor;
-        _hotkeys?.Dispose();
+        _hotkeys.Dispose();
         Tray.Dispose();
         _iconStream?.Dispose();
     }
@@ -79,9 +80,7 @@ public partial class TrayHostWindow : Window
 
     private void RegisterHotkeys()
     {
-        _hotkeys?.Dispose();
-        _hotkeys = new HotkeyService(this);
-
+        _hotkeys.UnregisterAll();
         _hotkeys.TryRegister(_config.RegionHotkey, () => Run(() => CaptureRegionAsync(TimeSpan.Zero)));
         _hotkeys.TryRegister(_config.FullScreenHotkey, () => Run(() => CaptureFullScreenAsync(TimeSpan.Zero)));
 
@@ -90,7 +89,7 @@ public partial class TrayHostWindow : Window
 
         Tray.ToolTipText = _hotkeys.Conflicts.Count == 0
             ? $"HDRSnip\n{_config.RegionHotkey}  region\n{_config.FullScreenHotkey}  full screen"
-            : $"HDRSnip\nSome hotkeys are in use by another app — use the tray menu or change them in Settings.";
+            : "HDRSnip\nSome hotkeys are in use by another app — use the tray menu or change them in Settings.";
     }
 
     // ------------------------------------------------------------ tray commands
@@ -119,15 +118,36 @@ public partial class TrayHostWindow : Window
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
-        var settings = new SettingsWindow(_config);
-        if (settings.ShowDialog() == true)
+        if (_settings is not null)
+        {
+            _settings.Activate();
+            return;
+        }
+
+        // Released while Settings is open: a registered hotkey never reaches the
+        // recorder as a key press, it would just start a capture over the dialog.
+        _hotkeys.UnregisterAll();
+        _settings = new SettingsWindow(_config);
+        try
+        {
+            _settings.ShowDialog();
+        }
+        finally
+        {
+            _settings = null;
             RegisterHotkeys();
+        }
     }
 
     private void OnExit(object sender, RoutedEventArgs e)
     {
-        _hotkeys?.Dispose();
-        Application.Current.Shutdown();
+        // Shutdown ignores a cancelled close, so give editors holding unexported
+        // markup their say first.
+        foreach (var editor in Application.Current.Windows.OfType<EditorWindow>().ToList())
+            editor.Close();
+
+        if (!Application.Current.Windows.OfType<EditorWindow>().Any())
+            Application.Current.Shutdown();
     }
 
     // ------------------------------------------------------------ capture flow
@@ -139,6 +159,9 @@ public partial class TrayHostWindow : Window
         if (bar.ChosenMode is not { } mode)
             return;
 
+        if (bar.DelaySeconds > 0)
+            await CountdownWindow.RunAsync(bar.DelaySeconds);
+
         if (mode == SnipMode.FullScreen)
             await CaptureFullScreenAsync(ChromeSettleDelay);
         else
@@ -146,32 +169,40 @@ public partial class TrayHostWindow : Window
     });
 
     /// <summary>Single entry point for capture work: one at a time, never fatal.</summary>
-    private void Run(Func<Task> work)
+    private async void Run(Func<Task> work)
     {
         if (_busy)
             return;
 
         _busy = true;
-        _ = Execute();
-        return;
-
-        async Task Execute()
+        try
         {
-            try
-            {
-                await work();
-            }
-            catch (Exception ex)
-            {
-                App.LogError("Capture", ex);
-                MessageBox.Show($"Capture failed.\n\n{ex.Message}", "HDRSnip",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            finally
-            {
-                _busy = false;
-            }
+            await work();
         }
+        catch (Exception ex)
+        {
+            App.LogError("Capture", ex);
+            MessageBox.Show($"Capture failed.\n\n{ex.Message}", "HDRSnip",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            _busy = false;
+
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, ReleaseCaptureMemory);
+        }
+    }
+
+    /// <summary>
+    /// A capture leaves frame-sized buffers and discarded bitmaps behind, and the
+    /// app then idles in the tray: nothing else would prompt their release. WPF
+    /// bitmaps free their pixels in finalizers, hence the second collection.
+    /// </summary>
+    private static void ReleaseCaptureMemory()
+    {
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
     }
 
     private async Task CaptureFullScreenAsync(TimeSpan settle)
@@ -179,8 +210,7 @@ public partial class TrayHostWindow : Window
         if (settle > TimeSpan.Zero)
             await Task.Delay(settle);
 
-        var result = await Task.Run(_capture.CaptureFullScreenAtCursor);
-        Present(result);
+        Present(await Task.Run(_capture.CaptureFullScreenAtCursor));
     }
 
     private async Task CaptureRegionAsync(TimeSpan settle)
@@ -189,19 +219,18 @@ public partial class TrayHostWindow : Window
             await Task.Delay(settle);
 
         // Grab and tone-map off the UI thread so the tray app never looks hung.
-        var (frame, preview) = await Task.Run(() =>
+        var (frame, preview, windows) = await Task.Run(() =>
         {
-            var captured = _capture.GrabMonitorAtCursor();
-            return (captured, _capture.RenderPreview(captured));
+            var captured = CaptureService.GrabMonitorAtCursor();
+            return (captured, _capture.RenderPreview(captured), Interop.Native.GetWindowBounds());
         });
 
-        var overlay = new CaptureOverlayWindow(frame, preview);
+        var overlay = new CaptureOverlayWindow(frame, preview, windows);
         overlay.ShowDialog();
         if (overlay.Selection is not { } selection)
             return;
 
-        var result = await Task.Run(() => _capture.CropAndFinish(frame, selection));
-        Present(result);
+        Present(await Task.Run(() => _capture.CropAndFinish(frame, selection)));
     }
 
     private void Present(CaptureResult result)
@@ -209,8 +238,7 @@ public partial class TrayHostWindow : Window
         _lastCapture = result;
         OpenLastItem.IsEnabled = true;
 
-        if (_config.CopyToClipboard)
-            CopyToClipboard(result.Image);
+        bool copied = _config.CopyToClipboard && ClipboardService.TryCopy(result.Image, result.Png);
 
         if (_config.OpenEditorAfterCapture)
         {
@@ -220,11 +248,7 @@ public partial class TrayHostWindow : Window
 
         try
         {
-            NotificationService.ShowCaptureCopied(
-                result.WasHdr,
-                result.Image.PixelWidth,
-                result.Image.PixelHeight,
-                NotificationService.TryWritePreview(result.Image));
+            NotificationService.ShowCapture(result, copied);
         }
         catch (Exception ex)
         {
@@ -232,54 +256,10 @@ public partial class TrayHostWindow : Window
             App.LogError("Toast", ex);
             try
             {
-                Tray.ShowBalloonTip("HDRSnip",
-                    result.WasHdr ? "HDR screenshot copied." : "Screenshot copied.",
+                Tray.ShowBalloonTip("HDRSnip", NotificationService.Headline(result, copied) + ".",
                     Hardcodet.Wpf.TaskbarNotification.BalloonIcon.Info);
             }
             catch { /* nothing more to offer */ }
-        }
-    }
-
-    /// <summary>
-    /// Offers PNG alongside the DIB so apps that prefer it keep exact pixels and
-    /// an alpha channel. Retries because the clipboard is a shared, lockable resource.
-    /// </summary>
-    private static void CopyToClipboard(BitmapSource image)
-    {
-        MemoryStream? png = null;
-        try
-        {
-            png = new MemoryStream();
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(image));
-            encoder.Save(png);
-        }
-        catch (Exception ex)
-        {
-            App.LogError("ClipboardPng", ex);
-            png = null;
-        }
-
-        for (int attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                var data = new DataObject();
-                data.SetImage(image);
-                if (png is not null)
-                {
-                    png.Position = 0;
-                    data.SetData("PNG", png, false);
-                }
-
-                Clipboard.SetDataObject(data, copy: true);
-                return;
-            }
-            catch (Exception ex)
-            {
-                App.LogError($"Clipboard#{attempt}", ex);
-                Thread.Sleep(40);
-            }
         }
     }
 

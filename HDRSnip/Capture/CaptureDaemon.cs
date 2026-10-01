@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
 
@@ -13,52 +13,68 @@ namespace HDRSnip.Capture;
 /// <remarks>
 /// Protocol (UTF-8 lines over a named pipe):
 ///   PING            -> PONG
+///   WARM &lt;idx&gt;      -> OK once the output's session exists and has grabbed a frame
+///                   -> ERR &lt;message&gt;
 ///   CAPTURE &lt;idx&gt;   -> OK &lt;map&gt; &lt;w&gt; &lt;h&gt; &lt;hdr&gt; &lt;l&gt; &lt;t&gt; &lt;bw&gt; &lt;bh&gt;, then wait for ACK
 ///                   -> ERR &lt;message&gt;
 ///   QUIT            -> exit
 /// </remarks>
 public static class CaptureDaemon
 {
-    /// <summary>Returns true when this process was launched as the daemon; it never returns to the caller.</summary>
+    private static Process? _owner;
+
+    /// <summary>Runs the daemon to completion when launched as <c>--capture-daemon &lt;owner pid&gt;</c>.</summary>
     public static bool TryRun(string[] args)
     {
-        if (args.Length < 1 || !args[0].Equals(CaptureDaemonClient.DaemonArgument, StringComparison.OrdinalIgnoreCase))
+        if (args.Length == 0 || !args[0].Equals(CaptureDaemonClient.DaemonArgument, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // DXGI wants an STA thread of its own.
-        Exception? fatal = null;
-        var thread = new Thread(() =>
+        if (args.Length < 2 || !int.TryParse(args[1], out int ownerPid))
         {
-            try { Serve(); }
-            catch (Exception ex) { fatal = ex; }
-        })
-        {
-            Name = "HDRSnip.CaptureDaemon",
-            IsBackground = false
-        };
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (fatal is not null)
-        {
-            LogFatal(fatal);
-            Environment.Exit(1);
+            Environment.ExitCode = 1;
+            return true;
         }
 
-        Environment.Exit(0);
+        try
+        {
+            ExitWith(ownerPid);
+            Serve(CaptureDaemonClient.PipeNameFor(ownerPid));
+        }
+        catch (Exception ex)
+        {
+            App.LogError("DaemonFatal", ex);
+            Environment.ExitCode = 1;
+        }
+
         return true;
     }
 
-    private static void Serve()
+    /// <summary>A tray process that crashes or is killed never sends QUIT, so the daemon watches it instead.</summary>
+    private static void ExitWith(int ownerPid)
     {
-        var sessions = new ConcurrentDictionary<int, DxgiOutputSession>();
+        try
+        {
+            _owner = Process.GetProcessById(ownerPid);
+            _owner.EnableRaisingEvents = true;
+            _owner.Exited += (_, _) => Environment.Exit(0);
+            if (_owner.HasExited)
+                Environment.Exit(0);
+        }
+        catch (ArgumentException)
+        {
+            Environment.Exit(0);
+        }
+    }
+
+    private static void Serve(string pipeName)
+    {
+        var sessions = new Dictionary<int, DxgiOutputSession>();
         long sequence = 0;
 
         while (true)
         {
             using var server = new NamedPipeServerStream(
-                CaptureDaemonClient.PipeName,
+                pipeName,
                 PipeDirection.InOut,
                 maxNumberOfServerInstances: 1,
                 PipeTransmissionMode.Byte,
@@ -70,46 +86,61 @@ public static class CaptureDaemon
             try { command = FrameChannel.ReadLine(server); }
             catch { continue; }
 
-            if (string.IsNullOrWhiteSpace(command))
-                continue;
-
             if (command.Equals("QUIT", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (var session in sessions.Values)
                     session.Dispose();
-                sessions.Clear();
                 return;
             }
 
             if (command.Equals("PING", StringComparison.OrdinalIgnoreCase))
-            {
                 FrameChannel.WriteLine(server, "PONG");
-                continue;
-            }
-
-            if (command.StartsWith("CAPTURE ", StringComparison.OrdinalIgnoreCase)
-                && int.TryParse(command.AsSpan(8), out int outputIndex))
-            {
-                HandleCapture(server, sessions, outputIndex, ref sequence);
-                continue;
-            }
-
-            FrameChannel.WriteLine(server, "ERR Unknown command");
+            else if (TryParse(command, "CAPTURE ", out int outputIndex))
+                Handle(server, sessions, outputIndex, publishAs: ++sequence);
+            else if (TryParse(command, "WARM ", out outputIndex))
+                Handle(server, sessions, outputIndex, publishAs: null);
+            else if (!string.IsNullOrWhiteSpace(command))
+                FrameChannel.WriteLine(server, "ERR Unknown command");
         }
     }
 
-    private static void HandleCapture(
+    private static bool TryParse(string command, string verb, out int outputIndex)
+    {
+        outputIndex = -1;
+        return command.StartsWith(verb, StringComparison.OrdinalIgnoreCase)
+               && int.TryParse(command.AsSpan(verb.Length), out outputIndex);
+    }
+
+    private static void Handle(
         Stream client,
-        ConcurrentDictionary<int, DxgiOutputSession> sessions,
+        Dictionary<int, DxgiOutputSession> sessions,
         int outputIndex,
-        ref long sequence)
+        long? publishAs)
+    {
+        GrabAndReply(client, sessions, outputIndex, publishAs);
+
+        // The grab leaves a frame-sized array behind and the daemon then sits
+        // idle, so nothing else would ever prompt the runtime to give it back.
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+    }
+
+    /// <summary>Grabs one frame, then publishes it — or, when warming, only reports that it could.</summary>
+    private static void GrabAndReply(
+        Stream client,
+        Dictionary<int, DxgiOutputSession> sessions,
+        int outputIndex,
+        long? publishAs)
     {
         try
         {
             var monitor = DisplayEnumerator.Enumerate().FirstOrDefault(m => m.OutputIndex == outputIndex)
                           ?? throw new InvalidOperationException($"Output {outputIndex} not found.");
 
-            var session = GetSession(sessions, outputIndex, monitor);
+            // A session is only good for the mode it was created in: a new
+            // resolution, arrangement or HDR state needs a new one.
+            if (!sessions.TryGetValue(outputIndex, out var session) || session.Monitor != monitor)
+                session = Replace(sessions, monitor);
+
             CapturedFrame frame;
             try
             {
@@ -117,14 +148,17 @@ public static class CaptureDaemon
             }
             catch
             {
-                // Rebuild once: a mode change or an access-lost race is routine.
-                if (sessions.TryRemove(outputIndex, out var stale))
-                    stale.Dispose();
-                session = sessions.GetOrAdd(outputIndex, _ => new DxgiOutputSession(monitor));
-                frame = session.Grab();
+                // Rebuild once: a device lost mid-copy is routine.
+                frame = Replace(sessions, monitor).Grab();
             }
 
-            var (map, header) = FrameChannel.Publish(frame, ++sequence);
+            if (publishAs is not { } sequence)
+            {
+                FrameChannel.WriteLine(client, "OK");
+                return;
+            }
+
+            var (map, header) = FrameChannel.Publish(frame, sequence);
             using (map)
             {
                 FrameChannel.WriteLine(client, header.Serialize());
@@ -140,31 +174,11 @@ public static class CaptureDaemon
         }
     }
 
-    private static DxgiOutputSession GetSession(
-        ConcurrentDictionary<int, DxgiOutputSession> sessions,
-        int outputIndex,
-        MonitorInfo monitor)
+    private static DxgiOutputSession Replace(Dictionary<int, DxgiOutputSession> sessions, MonitorInfo monitor)
     {
-        if (sessions.TryGetValue(outputIndex, out var existing) && existing.Matches(monitor))
-            return existing;
-
-        // Resolution or arrangement changed — the old duplication is worthless.
-        if (sessions.TryRemove(outputIndex, out var stale))
+        if (sessions.Remove(monitor.OutputIndex, out var stale))
             stale.Dispose();
 
-        return sessions.GetOrAdd(outputIndex, _ => new DxgiOutputSession(monitor));
-    }
-
-    private static void LogFatal(Exception ex)
-    {
-        // The daemon has no UI and no App instance, so it writes the log itself.
-        try
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "HDRSnip");
-            Directory.CreateDirectory(dir);
-            File.AppendAllText(Path.Combine(dir, "errors.log"), $"[{DateTime.Now:o}] DaemonFatal: {ex}\n");
-        }
-        catch { /* nothing left to try */ }
+        return sessions[monitor.OutputIndex] = new DxgiOutputSession(monitor);
     }
 }

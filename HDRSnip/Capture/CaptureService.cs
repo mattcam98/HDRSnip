@@ -3,10 +3,14 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 using HDRSnip.Interop;
 using HDRSnip.Models;
+using HDRSnip.Services;
 
 namespace HDRSnip.Capture;
 
-public sealed record CaptureResult(BitmapSource Image, bool WasHdr, string? SavedPath);
+/// <param name="Png">The image already encoded for the clipboard, when the capture flow needed it.</param>
+/// <param name="SaveFailed">Auto-save was on but the file could not be written.</param>
+public sealed record CaptureResult(
+    BitmapSource Image, bool WasHdr, string? SavedPath, byte[]? Png = null, bool SaveFailed = false);
 
 /// <summary>
 /// Everything a capture needs, from screen grab to finished bitmap. Owns no GPU
@@ -14,84 +18,86 @@ public sealed record CaptureResult(BitmapSource Image, bool WasHdr, string? Save
 /// </summary>
 public sealed class CaptureService(AppConfig config)
 {
-    private readonly AppConfig _config = config;
-
-    // ------------------------------------------------------------ acquisition
-
     /// <summary>Grabs the monitor under the cursor. Daemon first, GDI as a fallback.</summary>
-    public CapturedFrame GrabMonitorAtCursor()
+    public static CapturedFrame GrabMonitorAtCursor()
     {
         var monitor = DisplayEnumerator.FindAtPoint(Native.GetCursorPosition())
                       ?? throw new InvalidOperationException("No displays found.");
 
         var frame = CaptureHost.Daemon?.TryCapture(monitor);
-        return frame ?? GdiCapture.Capture(monitor);
+        if (frame is null)
+            return GdiCapture.Capture(monitor);
+
+        // Read here rather than in the daemon: it is a property of the desktop, not of DXGI.
+        return monitor.IsHdr ? frame with { SdrWhiteNits = Native.GetSdrWhiteNits(monitor.DeviceName) } : frame;
     }
 
     public CaptureResult CaptureFullScreenAtCursor() => Finish(GrabMonitorAtCursor());
 
-    /// <summary>
-    /// Tone-maps a frame at native resolution for the selection overlay. The
-    /// overlay covers the whole monitor, so anything downscaled here would be
-    /// stretched back up and look soft under the selection rectangle.
-    /// </summary>
+    /// <summary>Tone-maps a whole frame at native resolution for the selection overlay.</summary>
     public BitmapSource RenderPreview(CapturedFrame frame) => ToSdr(frame);
 
     public CaptureResult CropAndFinish(CapturedFrame frame, Int32Rect selection)
     {
         selection = ClampToFrame(selection, frame.Width, frame.Height);
-        return Finish(new CapturedFrame
+        return Finish(frame with
         {
             Width = selection.Width,
             Height = selection.Height,
-            MonitorBounds = frame.MonitorBounds,
-            WasHdr = frame.WasHdr,
-            IsLinearScRgb = frame.IsLinearScRgb,
             Rgba = Crop(frame.Rgba, frame.Width, selection)
         });
     }
 
-    // ------------------------------------------------------------ finishing
+    /// <summary>A timestamped path in the save folder that does not exist yet.</summary>
+    public string BuildSavePath()
+    {
+        Directory.CreateDirectory(config.SaveFolder);
+        string stem = Path.Combine(config.SaveFolder, $"HDRSnip_{DateTime.Now:yyyyMMdd_HHmmss}");
+        string path = stem + ".png";
+        for (int n = 2; File.Exists(path); n++)
+            path = $"{stem}_{n}.png";
+        return path;
+    }
 
+    /// <summary>
+    /// Tone-maps and encodes on the caller's (background) thread, so the UI thread
+    /// only has to hand the finished bytes to the clipboard.
+    /// </summary>
     private CaptureResult Finish(CapturedFrame frame)
     {
         var image = ToSdr(frame);
+        byte[]? png = config.CopyToClipboard || config.AutoSave ? ImageCodec.EncodePng(image) : null;
 
         string? savedPath = null;
-        if (_config.AutoSave)
+        bool saveFailed = false;
+        if (config.AutoSave)
         {
-            savedPath = BuildSavePath();
-            SavePng(image, savedPath);
+            // An unwritable folder must not cost the user the capture itself.
+            try
+            {
+                savedPath = BuildSavePath();
+                File.WriteAllBytes(savedPath, png!);
+            }
+            catch (Exception ex)
+            {
+                App.LogError("AutoSave", ex);
+                savedPath = null;
+                saveFailed = true;
+            }
         }
 
-        return new CaptureResult(image, frame.WasHdr, savedPath);
+        return new CaptureResult(image, frame.WasHdr, savedPath, png, saveFailed);
     }
 
-    private BitmapSource ToSdr(CapturedFrame frame)
+    private WriteableBitmap ToSdr(CapturedFrame frame)
     {
         double dpi = Native.GetMonitorScale(
             frame.MonitorBounds.Left + frame.MonitorBounds.Width / 2,
             frame.MonitorBounds.Top + frame.MonitorBounds.Height / 2) * 96.0;
 
-        return ToneMapper.ToSdrBitmap(frame, _config.ToneMapMethod, _config.SdrWhiteNits, dpi);
+        double white = config.AutoSdrWhite && frame.SdrWhiteNits is { } detected ? detected : config.SdrWhiteNits;
+        return ToneMapper.ToSdrBitmap(frame, config.ToneMapMethod, white, dpi);
     }
-
-    public static void SavePng(BitmapSource image, string path)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(image));
-        using var stream = File.Create(path);
-        encoder.Save(stream);
-    }
-
-    public string BuildSavePath()
-    {
-        Directory.CreateDirectory(_config.SaveFolder);
-        return Path.Combine(_config.SaveFolder, $"HDRSnip_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-    }
-
-    // ------------------------------------------------------------ geometry
 
     private static Int32Rect ClampToFrame(Int32Rect rect, int width, int height)
     {

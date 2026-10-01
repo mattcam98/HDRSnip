@@ -19,9 +19,6 @@ namespace HDRSnip.Capture;
 /// </remarks>
 public static class ToneMapper
 {
-    /// <summary>Toast inline image — small and quick to encode.</summary>
-    public const int ToastPreviewMaxEdge = 720;
-
     /// <summary>Below this, thread coordination costs more than it saves.</summary>
     private const int ParallelRowThreshold = 200_000;
 
@@ -50,25 +47,6 @@ public static class ToneMapper
         return bitmap;
     }
 
-    public static WriteableBitmap ScaleBitmapMaxEdge(BitmapSource source, int maxEdge)
-    {
-        int w = source.PixelWidth;
-        int h = source.PixelHeight;
-        if (maxEdge <= 0 || Math.Max(w, h) <= maxEdge)
-            return source as WriteableBitmap ?? Freeze(new WriteableBitmap(source));
-
-        double scale = maxEdge / (double)Math.Max(w, h);
-        var scaled = new TransformedBitmap(source, new ScaleTransform(scale, scale));
-        scaled.Freeze();
-        return Freeze(new WriteableBitmap(scaled));
-    }
-
-    private static WriteableBitmap Freeze(WriteableBitmap bitmap)
-    {
-        bitmap.Freeze();
-        return bitmap;
-    }
-
     // ------------------------------------------------------------- curve choice
 
     private static byte[] ResolveLut(CapturedFrame frame, ToneMapMethod method, double sdrWhiteNits)
@@ -80,7 +58,7 @@ public static class ToneMapper
         // On an HDR output always apply the chosen curve, even when the peak
         // happens to sit below 1.0 (typical for a desktop of UI chrome).
         // On an SDR output there is nothing to compress, so only gamma-encode.
-        if (!frame.WasHdr && !HasHdrPeak(frame.Rgba))
+        if (!frame.WasHdr)
             return GetCached(ToneMapMethod.Windows, double.PositiveInfinity, static v => LinearToSrgb(Saturate(v)));
 
         switch (method)
@@ -185,7 +163,10 @@ public static class ToneMapper
 
     // ------------------------------------------------------------- statistics
 
-    /// <summary>True when any colour channel exceeds SDR white, i.e. the frame carries real HDR.</summary>
+    /// <summary>
+    /// True when any colour channel exceeds SDR white, i.e. the frame carries real HDR.
+    /// The capture session folds this into <see cref="CapturedFrame.WasHdr"/>.
+    /// </summary>
     public static bool HasHdrPeak(Half[] rgba)
     {
         var bits = MemoryMarshal.Cast<Half, ushort>(rgba);

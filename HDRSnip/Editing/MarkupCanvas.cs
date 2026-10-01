@@ -39,6 +39,7 @@ public sealed class MarkupCanvas : Canvas
         [MarkupTool.Rectangle] = (Palette.Red, 4),
         [MarkupTool.Ellipse] = (Palette.Red, 4),
         [MarkupTool.Text] = (Palette.Red, 28),
+        [MarkupTool.Number] = (Palette.Red, 22),
     };
 
     // In-flight gesture
@@ -134,10 +135,10 @@ public sealed class MarkupCanvas : Canvas
         set
         {
             var target = StyleTarget;
-            if (!_styles.ContainsKey(target))
+            if (!_styles.TryGetValue(target, out var style))
                 return;
 
-            _styles[target] = (value, _styles[target].Size);
+            _styles[target] = (value, style.Size);
             if (_selected is not null)
                 ReplaceSelected(_selected.WithColor(value));
             if (IsEditingText)
@@ -151,12 +152,12 @@ public sealed class MarkupCanvas : Canvas
         set
         {
             var target = StyleTarget;
-            if (!_styles.ContainsKey(target))
+            if (!_styles.TryGetValue(target, out var style))
                 return;
 
             var (min, max) = SizeRange;
             value = Math.Clamp(Math.Round(value), min, max);
-            _styles[target] = (_styles[target].Color, value);
+            _styles[target] = (style.Color, value);
             if (_selected is not null)
                 ReplaceSelected(_selected.WithSize(value));
             if (IsEditingText)
@@ -166,7 +167,7 @@ public sealed class MarkupCanvas : Canvas
 
     public (double Min, double Max) SizeRange => StyleTarget switch
     {
-        MarkupTool.Text => (12, 96),
+        MarkupTool.Text or MarkupTool.Number => (12, 96),
         MarkupTool.Highlighter => (6, 48),
         _ => (1, 32)
     };
@@ -435,6 +436,17 @@ public sealed class MarkupCanvas : Canvas
                 return;
             }
 
+            case MarkupTool.Number:
+                History.Commit(Document.Add(new NumberAnnotation
+                {
+                    Center = point,
+                    Number = NextNumber(),
+                    FontSize = Size,
+                    Color = Color
+                }));
+                e.Handled = true;
+                return;
+
             case MarkupTool.Pen:
             case MarkupTool.Highlighter:
                 _strokePoints = [point];
@@ -584,6 +596,8 @@ public sealed class MarkupCanvas : Canvas
                 break;
         }
 
+        // The gesture is finished: a later CancelGesture must not roll it back.
+        _cropHandle = CropHandle.None;
         _draft = null;
         _dragSource = null;
         _strokePoints = null;
@@ -869,6 +883,10 @@ public sealed class MarkupCanvas : Canvas
         return null;
     }
 
+    /// <summary>One past the highest marker present, so deleting or undoing the last one reuses its number.</summary>
+    private int NextNumber() =>
+        Document.Annotations.OfType<NumberAnnotation>().Select(marker => marker.Number).DefaultIfEmpty(0).Max() + 1;
+
     private StrokeAnnotation BuildStroke() => new()
     {
         Points = _strokePoints!.ToArray(),
@@ -924,6 +942,7 @@ public sealed class MarkupCanvas : Canvas
         ShapeAnnotation { IsEllipse: true } => MarkupTool.Ellipse,
         ShapeAnnotation => MarkupTool.Rectangle,
         TextAnnotation => MarkupTool.Text,
+        NumberAnnotation => MarkupTool.Number,
         _ => MarkupTool.Pixelate
     };
 
