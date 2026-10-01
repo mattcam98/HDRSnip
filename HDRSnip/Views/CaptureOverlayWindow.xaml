@@ -12,6 +12,7 @@
         MouseLeftButtonDown="OnMouseDown"
         MouseMove="OnMouseMove"
         MouseLeftButtonUp="OnMouseUp"
+        LostMouseCapture="OnLostMouseCapture"
         MouseRightButtonUp="OnCancel">
   <Window.Resources>
     <!-- The overlay always sits on a dark scrim, so its chrome stays dark even
@@ -53,6 +54,31 @@
             StrokeEndLineCap="Round"
             Visibility="Collapsed" />
 
+      <!-- Resize handles, shown only while an adjustable selection is waiting to be confirmed. -->
+      <Path x:Name="Handles"
+            Fill="White"
+            Stroke="{DynamicResource Accent.Default}"
+            StrokeThickness="1.5"
+            Visibility="Collapsed" />
+
+      <Border x:Name="Loupe"
+              Background="{DynamicResource Surface.Overlay}"
+              BorderBrush="{DynamicResource Stroke.Strong}"
+              BorderThickness="1"
+              CornerRadius="{StaticResource Radius.Small}"
+              Padding="3"
+              Visibility="Collapsed">
+        <StackPanel>
+          <Grid Width="120" Height="120">
+            <Rectangle x:Name="LoupeImage" RenderOptions.BitmapScalingMode="NearestNeighbor" />
+            <!-- Frames the single frame pixel under the cursor. -->
+            <Rectangle Width="10" Height="10"
+                       Stroke="{DynamicResource Accent.Default}" StrokeThickness="1" />
+          </Grid>
+          <TextBlock x:Name="LoupeLabel" Style="{StaticResource Type.Mono}" HorizontalAlignment="Center" Margin="0,3,0,0" />
+        </StackPanel>
+      </Border>
+
       <Border x:Name="SizeBadge"
               Background="{DynamicResource Surface.Overlay}"
               BorderBrush="{DynamicResource Stroke.Default}"
@@ -75,10 +101,10 @@
                      Foreground="{DynamicResource Accent.Default}"
                      Margin="0,0,10,0"
                      VerticalAlignment="Center" />
-          <TextBlock Style="{StaticResource Type.Body}" Text="Drag to snip, or click a window" VerticalAlignment="Center" />
+          <TextBlock x:Name="HintText" Style="{StaticResource Type.Body}" Text="Drag to snip, or click a window" VerticalAlignment="Center" />
           <Border Width="1" Height="14" Margin="12,0" Background="{DynamicResource Stroke.Default}" />
           <TextBlock Style="{StaticResource Type.Secondary}" Text="Esc to cancel" VerticalAlignment="Center" />
-          <Border Width="1" Height="14" Margin="12,0" Background="{DynamicResource Stroke.Default}" />
+          <Border x:Name="HdrNoteDivider" Width="1" Height="14" Margin="12,0" Background="{DynamicResource Stroke.Default}" />
           <TextBlock x:Name="HdrNote"
                      Style="{StaticResource Type.Secondary}"
                      Text="HDR tone-mapped"

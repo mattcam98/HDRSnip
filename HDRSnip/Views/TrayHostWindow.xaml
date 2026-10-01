@@ -22,6 +22,8 @@
         <MenuItem x:Name="FullScreenItem" Header="Capture this screen" Click="OnFullScreen" />
         <Separator />
         <MenuItem Header="Open last capture" Click="OnOpenLast" x:Name="OpenLastItem" IsEnabled="False" />
+        <MenuItem Header="Pin last capture" Click="OnPinLast" x:Name="PinLastItem" IsEnabled="False" />
+        <MenuItem Header="Recent captures" Click="OnHistory" x:Name="HistoryItem" IsEnabled="False" />
         <MenuItem Header="Open captures folder" Click="OnOpenFolder" />
         <Separator />
         <MenuItem Header="Settings" Click="OnSettings" />

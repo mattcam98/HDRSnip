@@ -1,0 +1,33 @@
+<Window x:Class="HDRSnip.Views.PinWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="HDRSnip pin"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Topmost="True"
+        SizeToContent="WidthAndHeight"
+        Background="Transparent"
+        AllowsTransparency="True"
+        Cursor="SizeAll"
+        MouseLeftButtonDown="OnMouseDown"
+        MouseWheel="OnWheel"
+        KeyDown="OnKeyDown">
+
+  <Window.ContextMenu>
+    <ContextMenu>
+      <MenuItem Header="Copy" InputGestureText="Ctrl + C" Click="OnCopy" />
+      <MenuItem Header="Save as…" Click="OnSaveAs" />
+      <MenuItem Header="Actual size" InputGestureText="Ctrl + 0" Click="OnActualSize" />
+      <Separator />
+      <MenuItem Header="Close" InputGestureText="Esc" Click="OnClose" />
+    </ContextMenu>
+  </Window.ContextMenu>
+
+  <!-- A thin accent frame so the pin reads as an object on top of the desktop,
+       not part of whatever is behind it. -->
+  <Border BorderBrush="{DynamicResource Accent.Default}" BorderThickness="1"
+          ToolTip="Drag to move · scroll to resize · double-click or Esc to close · right-click for more">
+    <Image x:Name="Picture" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality" />
+  </Border>
+</Window>

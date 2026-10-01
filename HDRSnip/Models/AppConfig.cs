@@ -47,6 +47,12 @@ public sealed class AppConfig
 
     public bool AutoSave { get; set; }
 
+    /// <summary>Draw the mouse pointer into captures.</summary>
+    public bool CaptureCursor { get; set; }
+
+    /// <summary>Keep a dragged region on screen with resize handles until it is confirmed.</summary>
+    public bool AdjustSelection { get; set; }
+
     public bool StartWithWindows { get; set; }
 
     public int ConfigVersion { get; set; } = CurrentVersion;

@@ -10,6 +10,11 @@
 - **Numbered steps:** a new editor tool (`N`) places auto-incrementing numbered markers.
 - **HDR export:** HDR captures can be saved as JPEG XR (`.jxr`) from **Save as** — the original float pixels in linear scRGB, losslessly, with any markup composited at SDR white.
 - **Re-tone-map in the editor:** click the *HDR tone-mapped* badge to switch curve or SDR white level with a live preview. Marks and undo history are untouched.
+- **Magnifier:** the selection overlay shows an 8× loupe with the pixel coordinates under the cursor.
+- **Adjustable selection** (optional, in Settings): a dragged region stays on screen with handles. Drag to move or resize, arrow keys nudge by a pixel (Ctrl for ten, Shift to resize), Enter or a double-click captures.
+- **Mouse pointer in captures** (optional, in Settings), including inverting pointers such as the text I-beam.
+- **Pin to screen:** float a capture above every other window from the editor, the tray menu or Recent captures. Drag to move, scroll to resize, Esc or double-click to close.
+- **Recent captures:** the tray menu lists the last eight captures of the session to reopen, copy or pin. Held in memory only; nothing is kept after exit.
 - Editor zoom is now in screen pixels, so 100% is pixel-exact on scaled displays.
 
 ### Faster and lighter

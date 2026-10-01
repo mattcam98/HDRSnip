@@ -39,6 +39,7 @@ public static class ToneMapper
 
         var pixels = new byte[frame.Width * frame.Height * 4];
         MapToBgra8(frame.Rgba, pixels, frame.Width, frame.Height, lut);
+        frame.Cursor?.DrawOnto(pixels, frame.Width, frame.Height);
 
         if (dpi < 1) dpi = 96;
         var bitmap = new WriteableBitmap(frame.Width, frame.Height, dpi, dpi, PixelFormats.Bgra32, null);

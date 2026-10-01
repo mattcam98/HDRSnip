@@ -109,6 +109,12 @@ public partial class EditorWindow : Window
         }
     }
 
+    private void OnPin(object sender, RoutedEventArgs e)
+    {
+        Markup.CommitPendingEdits();
+        new PinWindow(Flattened).Show();
+    }
+
     private void OnSave(object sender, RoutedEventArgs e) => SaveTo(_savedPath);
 
     private void OnSaveAs(object sender, RoutedEventArgs e)

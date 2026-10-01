@@ -30,4 +30,7 @@ public sealed record CapturedFrame
     /// when it could be read. This is the level SDR white was composited at.
     /// </summary>
     public double? SdrWhiteNits { get; init; }
+
+    /// <summary>The mouse pointer to draw over the tone-mapped image, when cursor capture is on.</summary>
+    public CursorImage? Cursor { get; init; }
 }

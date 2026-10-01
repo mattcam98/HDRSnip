@@ -33,6 +33,10 @@ looks like what you saw.
 - **Window snip** — in the same overlay, click a window instead of dragging
 - **Full-screen snip** of the monitor under the cursor
 - **Delayed snip** (3, 5 or 10 s) from the tray, for menus and hover states
+- **Pixel-exact selection** — an 8× magnifier with coordinates, and optional handles to adjust a region before capturing
+- **Pin to screen** — float any capture above your other windows as a reference
+- **Recent captures** — reopen, copy or pin the last eight snips of the session; nothing is kept after exit
+- **Optional mouse pointer** in captures
 - **Three tone-mapping curves** — Windows/OBS (default, best for UI and text), ACES filmic, Reinhard
 - **Change your mind afterwards** — re-tone-map an HDR capture in the editor with a live preview
 - **Save the real HDR image** as JPEG XR, markup included
@@ -119,6 +123,8 @@ format Windows uses for its own HDR screenshots — with markup composited at SD
 | Copy to clipboard | On by default |
 | Auto-save PNG | Also writes to the save folder on every capture |
 | Open editor immediately | Skips the toast |
+| Include the mouse pointer | Off by default. Not included in JPEG XR exports |
+| Adjust a region before capturing | Keeps the dragged region on screen with handles; Enter or double-click captures |
 | Start with Windows | Store package: Windows startup task. Unpackaged: per-user `Run` key. No elevation |
 
 Settings live in `%LOCALAPPDATA%\HDRSnip\config.json`; errors, if any, in `errors.log`
@@ -164,7 +170,7 @@ straightforward float-expansion-plus-`MathF.Pow` version, at half the peak memor
 ```
 HDRSnip/
   Capture/     Daemon, DXGI session, shared-memory transport, tone mapper
-  Views/       Tray host, mode bar, selection overlay, editor, settings
+  Views/       Tray host, mode bar, selection overlay, editor, pin, history, settings
   Editing/     Annotation model, undo history and the markup canvas
   Controls/    HotkeyBox
   Services/    Hotkeys, autostart, notifications, theme

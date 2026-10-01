@@ -107,6 +107,10 @@
 
           <Border Width="1" Margin="10,4" Background="{DynamicResource Stroke.Subtle}" />
 
+          <Button Style="{StaticResource Button.Icon}" Click="OnPin" Margin="0,0,8,0"
+                  ToolTip="Pin to the screen, above other windows">
+            <TextBlock Style="{StaticResource Glyph}" Text="&#xE718;" FontSize="14" />
+          </Button>
           <Button Style="{StaticResource Button.Standard}" Click="OnCopy" Margin="0,0,8,0" MinWidth="0" Padding="12,7"
                   ToolTip="Copy the image with its markup (Ctrl+C)">
             <StackPanel Orientation="Horizontal">

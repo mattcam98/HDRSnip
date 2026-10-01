@@ -24,17 +24,23 @@ public sealed record CaptureResult(
 public sealed class CaptureService(AppConfig config)
 {
     /// <summary>Grabs the monitor under the cursor. Daemon first, GDI as a fallback.</summary>
-    public static CapturedFrame GrabMonitorAtCursor()
+    public CapturedFrame GrabMonitorAtCursor()
     {
         var monitor = DisplayEnumerator.FindAtPoint(Native.GetCursorPosition())
                       ?? throw new InvalidOperationException("No displays found.");
 
+        var cursor = config.CaptureCursor ? CursorImage.Capture(monitor.Bounds) : null;
+
         var frame = CaptureHost.Daemon?.TryCapture(monitor);
         if (frame is null)
-            return GdiCapture.Capture(monitor);
+            return GdiCapture.Capture(monitor) with { Cursor = cursor };
 
         // Read here rather than in the daemon: it is a property of the desktop, not of DXGI.
-        return monitor.IsHdr ? frame with { SdrWhiteNits = Native.GetSdrWhiteNits(monitor.DeviceName) } : frame;
+        return frame with
+        {
+            Cursor = cursor,
+            SdrWhiteNits = monitor.IsHdr ? Native.GetSdrWhiteNits(monitor.DeviceName) : null
+        };
     }
 
     public CaptureResult CaptureFullScreenAtCursor() => Finish(GrabMonitorAtCursor());
@@ -49,6 +55,7 @@ public sealed class CaptureService(AppConfig config)
         {
             Width = selection.Width,
             Height = selection.Height,
+            Cursor = frame.Cursor?.Offset(-selection.X, -selection.Y),
             Rgba = Crop(frame.Rgba, frame.Width, selection)
         });
     }

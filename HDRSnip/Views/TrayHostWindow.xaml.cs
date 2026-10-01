@@ -24,7 +24,7 @@ public partial class TrayHostWindow : Window
     private readonly HotkeyService _hotkeys;
     private EditorWindow? _editor;
     private SettingsWindow? _settings;
-    private CaptureResult? _lastCapture;
+    private readonly CaptureHistory _history = new();
     private bool _busy;
 
     /// <summary>System.Drawing.Icon reads lazily from its stream, so it must outlive construction.</summary>
@@ -101,6 +101,34 @@ public partial class TrayHostWindow : Window
         Run(() => CaptureFullScreenAsync(ChromeSettleDelay));
 
     private void OnOpenLast(object sender, RoutedEventArgs e) => OpenLastInEditor();
+
+    private void OnPinLast(object sender, RoutedEventArgs e)
+    {
+        if (_history.Latest is { } latest)
+            new PinWindow(latest.Open().Image).Show();
+    }
+
+    private void OnHistory(object sender, RoutedEventArgs e)
+    {
+        var window = new HistoryWindow(_history);
+        window.ShowDialog();
+        if (window.Choice is not var (entry, action))
+            return;
+
+        var capture = entry.Open();
+        switch (action)
+        {
+            case HistoryAction.Copy:
+                ClipboardService.TryCopy(capture.Image, capture.Png);
+                break;
+            case HistoryAction.Pin:
+                new PinWindow(capture.Image).Show();
+                break;
+            default:
+                OpenInEditor(capture);
+                break;
+        }
+    }
 
     private void OnOpenFolder(object sender, RoutedEventArgs e)
     {
@@ -208,11 +236,11 @@ public partial class TrayHostWindow : Window
         // Grab and tone-map off the UI thread so the tray app never looks hung.
         var (frame, preview, windows) = await Task.Run(() =>
         {
-            var captured = CaptureService.GrabMonitorAtCursor();
+            var captured = _capture.GrabMonitorAtCursor();
             return (captured, _capture.RenderPreview(captured), Interop.Native.GetWindowBounds());
         });
 
-        var overlay = new CaptureOverlayWindow(frame, preview, windows);
+        var overlay = new CaptureOverlayWindow(frame, preview, windows, _config.AdjustSelection);
         overlay.ShowDialog();
         if (overlay.Selection is not { } selection)
             return;
@@ -222,8 +250,8 @@ public partial class TrayHostWindow : Window
 
     private void Present(CaptureResult result)
     {
-        _lastCapture = result;
-        OpenLastItem.IsEnabled = true;
+        _history.Add(result);
+        OpenLastItem.IsEnabled = PinLastItem.IsEnabled = HistoryItem.IsEnabled = true;
 
         bool copied = _config.CopyToClipboard && ClipboardService.TryCopy(result.Image, result.Png);
 
@@ -252,19 +280,22 @@ public partial class TrayHostWindow : Window
 
     private void OpenLastInEditor()
     {
-        if (_lastCapture is null)
-            return;
+        if (_history.Latest is { } latest)
+            OpenInEditor(latest.Open());
+    }
 
+    private void OpenInEditor(CaptureResult capture)
+    {
         // Reuse the window unless it holds markup the user has not exported yet;
         // then a second window is far better than silently discarding their work.
         if (_editor is { IsLoaded: true } && !_editor.HasUnsavedEdits)
         {
-            _editor.Load(_lastCapture);
+            _editor.Load(capture);
             _editor.Activate();
             return;
         }
 
-        var editor = new EditorWindow(_lastCapture, _capture);
+        var editor = new EditorWindow(capture, _capture);
         editor.Closed += (_, _) =>
         {
             // An older window closing must not forget a newer one.

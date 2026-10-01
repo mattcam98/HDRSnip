@@ -41,6 +41,37 @@ internal static partial class Native
     [LibraryImport("user32.dll")]
     private static partial IntPtr MonitorFromPoint(POINT point, uint flags);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CURSORINFO
+    {
+        public int Size;
+        public int Flags;
+        public IntPtr Cursor;
+        public POINT Position;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ICONINFO
+    {
+        public int IsIcon;
+        public int HotspotX;
+        public int HotspotY;
+        public IntPtr Mask;
+        public IntPtr Color;
+    }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetCursorInfo(ref CURSORINFO info);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetIconInfo(IntPtr icon, out ICONINFO info);
+
+    [LibraryImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool DeleteObject(IntPtr handle);
+
     [LibraryImport("user32.dll")]
     private static partial IntPtr GetTopWindow(IntPtr parent);
 
@@ -223,6 +254,24 @@ internal static partial class Native
         }
 
         return bounds;
+    }
+
+    /// <summary>The pointer on screen right now with its hotspot, or null while it is hidden.</summary>
+    internal static (IntPtr Handle, Point Position, Point Hotspot)? GetVisibleCursor()
+    {
+        const int showing = 1;
+        var info = new CURSORINFO { Size = Marshal.SizeOf<CURSORINFO>() };
+        if (!GetCursorInfo(ref info) || (info.Flags & showing) == 0 || info.Cursor == IntPtr.Zero)
+            return null;
+
+        if (!GetIconInfo(info.Cursor, out var icon))
+            return null;
+
+        // GetIconInfo hands back copies of the cursor's bitmaps; only the hotspot is wanted.
+        if (icon.Mask != IntPtr.Zero) DeleteObject(icon.Mask);
+        if (icon.Color != IntPtr.Zero) DeleteObject(icon.Color);
+
+        return (info.Cursor, new Point(info.Position.X, info.Position.Y), new Point(icon.HotspotX, icon.HotspotY));
     }
 
     /// <summary>Makes a window ignore the mouse and never become the foreground window.</summary>

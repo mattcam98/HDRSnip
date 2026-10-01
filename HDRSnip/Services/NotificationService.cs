@@ -1,5 +1,4 @@
 using System.IO;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using HDRSnip.Capture;
 using Microsoft.Toolkit.Uwp.Notifications;
@@ -52,7 +51,7 @@ public static class NotificationService
         try
         {
             var path = Path.Combine(Path.GetTempPath(), "HDRSnip", "last-capture.png");
-            ImageCodec.Save(Downscale(image, PreviewMaxEdge), path);
+            ImageCodec.Save(ImageCodec.Thumbnail(image, PreviewMaxEdge), path);
             return path;
         }
         catch (Exception ex)
@@ -60,18 +59,6 @@ public static class NotificationService
             App.LogError("ToastPreview", ex);
             return null;
         }
-    }
-
-    private static BitmapSource Downscale(BitmapSource source, int maxEdge)
-    {
-        int longest = Math.Max(source.PixelWidth, source.PixelHeight);
-        if (longest <= maxEdge)
-            return source;
-
-        double scale = (double)maxEdge / longest;
-        var scaled = new TransformedBitmap(source, new ScaleTransform(scale, scale));
-        scaled.Freeze();
-        return scaled;
     }
 
     private static void OnActivated(ToastNotificationActivatedEventArgsCompat e)

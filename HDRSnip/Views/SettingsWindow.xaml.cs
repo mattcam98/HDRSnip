@@ -35,6 +35,8 @@ public partial class SettingsWindow : Window
         SaveFolderBox.Text = config.SaveFolder;
         CopyToggle.IsChecked = config.CopyToClipboard;
         AutoSaveToggle.IsChecked = config.AutoSave;
+        CursorToggle.IsChecked = config.CaptureCursor;
+        AdjustToggle.IsChecked = config.AdjustSelection;
         EditorToggle.IsChecked = config.OpenEditorAfterCapture;
         AutostartToggle.IsChecked = config.StartWithWindows;
 
@@ -103,6 +105,8 @@ public partial class SettingsWindow : Window
         _config.SaveFolder = folder.Length == 0 ? AppConfig.DefaultSaveFolder : folder;
         _config.CopyToClipboard = CopyToggle.IsChecked == true;
         _config.AutoSave = AutoSaveToggle.IsChecked == true;
+        _config.CaptureCursor = CursorToggle.IsChecked == true;
+        _config.AdjustSelection = AdjustToggle.IsChecked == true;
         _config.OpenEditorAfterCapture = EditorToggle.IsChecked == true;
         _config.StartWithWindows = AutostartToggle.IsChecked == true;
         _config.AutoSdrWhite = AutoWhiteToggle.IsChecked == true;

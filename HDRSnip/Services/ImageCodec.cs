@@ -16,6 +16,22 @@ public static class ImageCodec
         return stream.ToArray();
     }
 
+    /// <summary>
+    /// A copy scaled to fit <paramref name="maxEdge"/>. Materialised, so it does
+    /// not keep the full-size source alive the way a lazy transform would.
+    /// </summary>
+    public static BitmapSource Thumbnail(BitmapSource source, int maxEdge)
+    {
+        int longest = Math.Max(source.PixelWidth, source.PixelHeight);
+        if (longest <= maxEdge)
+            return source;
+
+        double scale = (double)maxEdge / longest;
+        var thumbnail = new WriteableBitmap(new TransformedBitmap(source, new ScaleTransform(scale, scale)));
+        thumbnail.Freeze();
+        return thumbnail;
+    }
+
     /// <summary>Writes the image in the format the extension names, PNG for anything unrecognised.</summary>
     public static void Save(BitmapSource image, string path)
     {

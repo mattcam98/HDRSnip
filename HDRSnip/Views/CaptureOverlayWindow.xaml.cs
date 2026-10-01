@@ -15,27 +15,47 @@ namespace HDRSnip.Views;
 /// Freezing first is what makes the selection honest: what you drag over is
 /// exactly what gets cropped, even if the desktop keeps animating underneath.
 /// Dragging selects a region; a plain click takes the window under the cursor.
+/// With adjustment on, a dragged region stays on screen with handles until
+/// Enter or a double-click confirms it.
 /// </summary>
 public partial class CaptureOverlayWindow : Window
 {
     private const double MinimumDragDip = 3;
     private const double CornerTickLength = 14;
     private const double BadgeGap = 10;
+    private const double HandleSize = 9;
+    private const double HandleSlack = 8;
+
+    /// <summary>Frame pixels shown across the loupe; odd, so one pixel sits dead centre.</summary>
+    private const int LoupePixels = 15;
+    private const double LoupeOffset = 22;
+
+    private enum Mode { Idle, Dragging, Adjusting, AdjustDragging }
+
+    private enum Handle { None, Move, N, S, E, W, NE, NW, SE, SW }
 
     private readonly CapturedFrame _frame;
+    private readonly bool _adjust;
+    private readonly ImageBrush _loupeBrush;
 
     /// <summary>Window bounds in frame pixels, front to back, as they were when the frame was grabbed.</summary>
     private readonly List<Int32Rect> _windows = [];
+
+    private Mode _mode;
     private Point _origin;
-    private bool _dragging;
+    private Rect _region;        // the selection being adjusted, in DIPs
+    private Rect _anchor;        // _region when the current handle drag began
+    private Handle _handle;
     private bool _hintDismissed;
 
     /// <summary>The chosen region in frame pixels, or null if cancelled.</summary>
     public Int32Rect? Selection { get; private set; }
 
-    public CaptureOverlayWindow(CapturedFrame frame, BitmapSource preview, IEnumerable<System.Drawing.Rectangle> windows)
+    public CaptureOverlayWindow(
+        CapturedFrame frame, BitmapSource preview, IEnumerable<System.Drawing.Rectangle> windows, bool adjust)
     {
         _frame = frame;
+        _adjust = adjust;
         InitializeComponent();
 
         foreach (var window in windows)
@@ -61,6 +81,10 @@ public partial class CaptureOverlayWindow : Window
 
         Frozen.Source = preview;
         HdrNote.Visibility = frame.WasHdr ? Visibility.Visible : Visibility.Collapsed;
+        HdrNoteDivider.Visibility = HdrNote.Visibility;
+
+        _loupeBrush = new ImageBrush(preview) { ViewboxUnits = BrushMappingMode.Absolute, Stretch = Stretch.Fill };
+        LoupeImage.Fill = _loupeBrush;
 
         Loaded += OnLoaded;
     }
@@ -74,7 +98,9 @@ public partial class CaptureOverlayWindow : Window
         Canvas.SetLeft(Hint, (ActualWidth - Hint.ActualWidth) / 2);
         Canvas.SetTop(Hint, Math.Max(24, ActualHeight * 0.06));
 
-        HighlightWindowAt(Mouse.GetPosition(this));
+        var position = Mouse.GetPosition(this);
+        HighlightWindowAt(position);
+        UpdateLoupe(position);
     }
 
     // ------------------------------------------------------------ interaction
@@ -85,27 +111,75 @@ public partial class CaptureOverlayWindow : Window
             return;
 
         DismissHint();
-        _dragging = true;
         _origin = e.GetPosition(this);
-        Selection = null;
+
+        if (_mode == Mode.Adjusting)
+        {
+            _handle = HitHandle(_origin);
+            if (_handle == Handle.Move && e.ClickCount == 2)
+            {
+                Commit(_region);
+                return;
+            }
+
+            if (_handle != Handle.None)
+            {
+                _anchor = _region;
+                _mode = Mode.AdjustDragging;
+                CaptureMouse();
+                return;
+            }
+        }
+
+        // Anywhere else starts a fresh selection.
+        _mode = Mode.Dragging;
+        Handles.Visibility = Visibility.Collapsed;
+        Cursor = Cursors.Cross;
         CaptureMouse();
-        UpdateSelection(_origin, _origin);
+        ShowSelection(new Rect(_origin, _origin), drawn: true);
     }
 
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
-        if (_dragging)
-            UpdateSelection(_origin, e.GetPosition(this));
-        else
-            HighlightWindowAt(e.GetPosition(this));
+        var position = e.GetPosition(this);
+        UpdateLoupe(position);
+
+        switch (_mode)
+        {
+            case Mode.Dragging:
+                ShowSelection(Normalize(_origin, position), drawn: true);
+                break;
+
+            case Mode.AdjustDragging:
+                SetRegion(DragRegion(_anchor, _handle, _origin, position));
+                break;
+
+            case Mode.Adjusting:
+                Cursor = CursorFor(HitHandle(position));
+                break;
+
+            default:
+                HighlightWindowAt(position);
+                break;
+        }
     }
 
     private void OnMouseUp(object sender, MouseButtonEventArgs e)
     {
-        if (!_dragging || e.ChangedButton != MouseButton.Left)
+        if (e.ChangedButton != MouseButton.Left)
             return;
 
-        _dragging = false;
+        if (_mode == Mode.AdjustDragging)
+        {
+            _mode = Mode.Adjusting;
+            ReleaseMouseCapture();
+            return;
+        }
+
+        if (_mode != Mode.Dragging)
+            return;
+
+        _mode = Mode.Idle;
         ReleaseMouseCapture();
 
         var region = Normalize(_origin, e.GetPosition(this));
@@ -122,18 +196,66 @@ public partial class CaptureOverlayWindow : Window
             {
                 ShowSelection(Rect.Empty);
             }
-
-            return;
         }
+        else if (_adjust)
+        {
+            _mode = Mode.Adjusting;
+            HintText.Text = "Enter or double-click to capture";
+            Hint.BeginAnimation(OpacityProperty, null);
+            Hint.Opacity = 1;
+            SetRegion(region);
+        }
+        else
+        {
+            Commit(region);
+        }
+    }
 
-        Selection = ToFramePixels(region);
-        Close();
+    private void OnLostMouseCapture(object sender, MouseEventArgs e)
+    {
+        if (_mode == Mode.AdjustDragging)
+            _mode = Mode.Adjusting;
+        else if (_mode == Mode.Dragging)
+            _mode = Mode.Idle;
     }
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
+        {
             Cancel();
+            return;
+        }
+
+        if (_mode != Mode.Adjusting)
+            return;
+
+        // One frame pixel per press, ten with Ctrl; Shift moves the far edge instead of the whole region.
+        double step = (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ? 10 : 1) * ActualWidth / _frame.Width;
+        Vector delta = e.Key switch
+        {
+            Key.Left => new Vector(-step, 0),
+            Key.Right => new Vector(step, 0),
+            Key.Up => new Vector(0, -step),
+            Key.Down => new Vector(0, step),
+            _ => default
+        };
+
+        if (e.Key == Key.Enter)
+        {
+            Commit(_region);
+        }
+        else if (delta != default)
+        {
+            var handle = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? Handle.SE : Handle.Move;
+            SetRegion(DragRegion(_region, handle, default, (Point)delta));
+        }
+        else
+        {
+            return;
+        }
+
+        e.Handled = true;
     }
 
     private void OnCancel(object sender, MouseButtonEventArgs e) => Cancel();
@@ -141,6 +263,12 @@ public partial class CaptureOverlayWindow : Window
     private void Cancel()
     {
         Selection = null;
+        Close();
+    }
+
+    private void Commit(Rect region)
+    {
+        Selection = ToFramePixels(region);
         Close();
     }
 
@@ -160,10 +288,16 @@ public partial class CaptureOverlayWindow : Window
 
     // ------------------------------------------------------------ chrome
 
-    private void UpdateSelection(Point a, Point b) => ShowSelection(Normalize(a, b), drawn: true);
-
     private void HighlightWindowAt(Point position) =>
         ShowSelection(WindowAt(position) is { } window ? ToDips(window) : Rect.Empty);
+
+    private void SetRegion(Rect region)
+    {
+        _region = region;
+        ShowSelection(region, drawn: true);
+        Handles.Data = BuildHandles(region);
+        Handles.Visibility = Visibility.Visible;
+    }
 
     /// <summary>Outlines a region and punches it out of the dim. An empty region clears both.</summary>
     private void ShowSelection(Rect region, bool drawn = false)
@@ -209,6 +343,34 @@ public partial class CaptureOverlayWindow : Window
         Canvas.SetTop(SizeBadge, Math.Max(0, top));
     }
 
+    /// <summary>Magnified pixels around the cursor with its frame coordinates, for pixel-exact edges.</summary>
+    private void UpdateLoupe(Point position)
+    {
+        if (ActualWidth < 1 || ActualHeight < 1)
+            return;
+
+        int x = Math.Clamp((int)(position.X * _frame.Width / ActualWidth), 0, _frame.Width - 1);
+        int y = Math.Clamp((int)(position.Y * _frame.Height / ActualHeight), 0, _frame.Height - 1);
+
+        // The brush viewbox is in the bitmap's own DIPs, which differ from pixels on a scaled monitor.
+        var source = (BitmapSource)_loupeBrush.ImageSource;
+        double dipsPerPixelX = 96.0 / source.DpiX, dipsPerPixelY = 96.0 / source.DpiY;
+        int half = LoupePixels / 2;
+        _loupeBrush.Viewbox = new Rect(
+            (x - half) * dipsPerPixelX, (y - half) * dipsPerPixelY, LoupePixels * dipsPerPixelX, LoupePixels * dipsPerPixelY);
+        LoupeLabel.Text = $"{x}, {y}";
+
+        Loupe.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double width = Loupe.DesiredSize.Width, height = Loupe.DesiredSize.Height;
+        double left = position.X + LoupeOffset, top = position.Y + LoupeOffset;
+        if (left + width > ActualWidth) left = position.X - LoupeOffset - width;
+        if (top + height > ActualHeight) top = position.Y - LoupeOffset - height;
+
+        Canvas.SetLeft(Loupe, Math.Max(0, left));
+        Canvas.SetTop(Loupe, Math.Max(0, top));
+        Loupe.Visibility = Visibility.Visible;
+    }
+
     private static Geometry BuildCornerTicks(Rect r)
     {
         double tick = Math.Min(CornerTickLength, Math.Min(r.Width, r.Height) / 2);
@@ -234,6 +396,77 @@ public partial class CaptureOverlayWindow : Window
             context.LineTo(new Point(at.X, at.Y + dy), true, false);
         }
     }
+
+    private static Geometry BuildHandles(Rect region)
+    {
+        var group = new GeometryGroup { FillRule = FillRule.Nonzero };
+        foreach (var (_, at) in HandlePoints(region))
+        {
+            group.Children.Add(new RectangleGeometry(
+                new Rect(at.X - HandleSize / 2, at.Y - HandleSize / 2, HandleSize, HandleSize), 1.5, 1.5));
+        }
+
+        group.Freeze();
+        return group;
+    }
+
+    // ------------------------------------------------------------ adjustment
+
+    private static IEnumerable<(Handle Handle, Point At)> HandlePoints(Rect r)
+    {
+        yield return (Handle.NW, r.TopLeft);
+        yield return (Handle.N, new Point(r.X + r.Width / 2, r.Top));
+        yield return (Handle.NE, r.TopRight);
+        yield return (Handle.E, new Point(r.Right, r.Y + r.Height / 2));
+        yield return (Handle.SE, r.BottomRight);
+        yield return (Handle.S, new Point(r.X + r.Width / 2, r.Bottom));
+        yield return (Handle.SW, r.BottomLeft);
+        yield return (Handle.W, new Point(r.Left, r.Y + r.Height / 2));
+    }
+
+    private Handle HitHandle(Point p)
+    {
+        foreach (var (handle, at) in HandlePoints(_region))
+        {
+            if (Math.Abs(p.X - at.X) <= HandleSlack && Math.Abs(p.Y - at.Y) <= HandleSlack)
+                return handle;
+        }
+
+        return _region.Contains(p) ? Handle.Move : Handle.None;
+    }
+
+    /// <summary>Moves or resizes a region by a drag, keeping it on screen and never inside out.</summary>
+    private Rect DragRegion(Rect anchor, Handle handle, Point from, Point to)
+    {
+        var delta = to - from;
+        if (handle == Handle.Move)
+        {
+            return new Rect(
+                Math.Clamp(anchor.X + delta.X, 0, Math.Max(0, ActualWidth - anchor.Width)),
+                Math.Clamp(anchor.Y + delta.Y, 0, Math.Max(0, ActualHeight - anchor.Height)),
+                anchor.Width, anchor.Height);
+        }
+
+        double left = anchor.Left, top = anchor.Top, right = anchor.Right, bottom = anchor.Bottom;
+        if (handle is Handle.W or Handle.NW or Handle.SW) left = Math.Clamp(left + delta.X, 0, ActualWidth);
+        if (handle is Handle.E or Handle.NE or Handle.SE) right = Math.Clamp(right + delta.X, 0, ActualWidth);
+        if (handle is Handle.N or Handle.NW or Handle.NE) top = Math.Clamp(top + delta.Y, 0, ActualHeight);
+        if (handle is Handle.S or Handle.SW or Handle.SE) bottom = Math.Clamp(bottom + delta.Y, 0, ActualHeight);
+
+        return new Rect(
+            new Point(Math.Min(left, right), Math.Min(top, bottom)),
+            new Point(Math.Max(left, right), Math.Max(top, bottom)));
+    }
+
+    private static Cursor CursorFor(Handle handle) => handle switch
+    {
+        Handle.N or Handle.S => Cursors.SizeNS,
+        Handle.E or Handle.W => Cursors.SizeWE,
+        Handle.NE or Handle.SW => Cursors.SizeNESW,
+        Handle.NW or Handle.SE => Cursors.SizeNWSE,
+        Handle.Move => Cursors.SizeAll,
+        _ => Cursors.Cross
+    };
 
     // ------------------------------------------------------------ geometry
 

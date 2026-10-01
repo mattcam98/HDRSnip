@@ -71,6 +71,19 @@
                       Content="Also save a PNG automatically"
                       Margin="0,0,0,14" />
 
+            <CheckBox x:Name="CursorToggle"
+                      Style="{StaticResource Field.Toggle}"
+                      Content="Include the mouse pointer"
+                      Margin="0,0,0,14" />
+
+            <CheckBox x:Name="AdjustToggle"
+                      Style="{StaticResource Field.Toggle}"
+                      Content="Adjust a region before capturing it"
+                      Margin="0,0,0,4" />
+            <TextBlock Style="{StaticResource Type.Caption}"
+                       Margin="0,0,0,14"
+                       Text="Keeps the dragged region on screen with handles. Arrow keys nudge it, Enter or a double-click captures." />
+
             <CheckBox x:Name="EditorToggle"
                       Style="{StaticResource Field.Toggle}"
                       Content="Open the editor instead of showing a toast"
