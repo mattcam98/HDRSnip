@@ -196,7 +196,18 @@ public partial class EditorWindow : Window
 
     private Point? _gripPressed;
 
-    private void OnGripDown(object sender, MouseButtonEventArgs e) => _gripPressed = e.GetPosition(this);
+    // Captured, so a quick flick off the small grip still reaches OnGripMove.
+    private void OnGripDown(object sender, MouseButtonEventArgs e)
+    {
+        _gripPressed = e.GetPosition(this);
+        DragGrip.CaptureMouse();
+    }
+
+    private void OnGripUp(object sender, MouseButtonEventArgs e)
+    {
+        _gripPressed = null;
+        DragGrip.ReleaseMouseCapture();
+    }
 
     /// <summary>
     /// Dragging the grip hands the image to another app as a file. The file is
@@ -204,11 +215,8 @@ public partial class EditorWindow : Window
     /// </summary>
     private void OnGripMove(object sender, MouseEventArgs e)
     {
-        if (_gripPressed is not { } start || e.LeftButton != MouseButtonState.Pressed)
-        {
-            _gripPressed = null;
+        if (_gripPressed is not { } start)
             return;
-        }
 
         var moved = e.GetPosition(this) - start;
         if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance &&
@@ -216,6 +224,7 @@ public partial class EditorWindow : Window
             return;
 
         _gripPressed = null;
+        DragGrip.ReleaseMouseCapture();
         Markup.CommitPendingEdits();
         try
         {

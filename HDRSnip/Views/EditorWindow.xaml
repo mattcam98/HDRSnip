@@ -109,7 +109,7 @@
 
           <Border x:Name="DragGrip" Background="Transparent" Cursor="SizeAll" Padding="9,8" Margin="0,0,4,0"
                   CornerRadius="{StaticResource Radius.Control}"
-                  MouseLeftButtonDown="OnGripDown" MouseMove="OnGripMove"
+                  MouseLeftButtonDown="OnGripDown" MouseLeftButtonUp="OnGripUp" MouseMove="OnGripMove"
                   ToolTip="Drag from here into another app or a folder">
             <TextBlock Style="{StaticResource Glyph}" Text="&#xE784;" FontSize="14" Foreground="{DynamicResource Text.Secondary}" />
           </Border>
