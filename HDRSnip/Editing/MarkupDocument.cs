@@ -46,7 +46,7 @@ public sealed record MarkupDocument(ImmutableArray<Annotation> Annotations, Int3
         this with { Annotations = Annotations.Replace(old, replacement) };
 
     /// <summary>
-    /// Draws every mark in order, over one shared scrim for the spotlights.
+    /// Draws every mark, with one shared scrim for the spotlights.
     /// </summary>
     /// <param name="hidden">A mark to leave out, because it is being edited or dragged.</param>
     /// <param name="draft">A mark still being drawn, not yet part of the document.</param>
@@ -65,10 +65,15 @@ public sealed record MarkupDocument(ImmutableArray<Annotation> Annotations, Int3
                 new RectangleGeometry(spotlight.Rect));
         }
 
+        // Redactions first, so the scrim dims them like the capture they replace
+        // instead of leaving them glowing through it.
+        foreach (var mark in marks.OfType<PixelateAnnotation>())
+            mark.Draw(dc, source);
+
         if (scrim is not null)
             dc.DrawGeometry(SpotlightScrim, null, scrim);
 
-        foreach (var mark in marks)
+        foreach (var mark in marks.Where(mark => mark is not PixelateAnnotation))
             mark.Draw(dc, source);
     }
 

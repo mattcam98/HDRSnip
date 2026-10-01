@@ -365,6 +365,8 @@ public sealed class MarkupCanvas : Canvas
         host.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden);
         host.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Hidden);
         host.SetValue(FocusableProperty, false);
+        // The bare template has no chrome of its own; this is what shows a text mark's background while typing.
+        host.SetValue(BackgroundProperty, new TemplateBindingExtension(BackgroundProperty));
         template.VisualTree = host;
         box.Template = template;
 
