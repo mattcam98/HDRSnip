@@ -107,6 +107,13 @@
 
           <Border Width="1" Margin="10,4" Background="{DynamicResource Stroke.Subtle}" />
 
+          <Button x:Name="CopyTextButton" Style="{StaticResource Button.Subtle}" Click="OnCopyText" Margin="0,0,8,0" Padding="10,7"
+                  ToolTip="Recognise the text in this capture and copy it. Runs on this PC">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Style="{StaticResource Glyph}" Text="&#xE8E9;" FontSize="13" Margin="0,0,8,0" VerticalAlignment="Center" />
+              <TextBlock Style="{StaticResource Type.Body}" Text="Copy text" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
           <Button Style="{StaticResource Button.Icon}" Click="OnPin" Margin="0,0,8,0"
                   ToolTip="Pin to the screen, above other windows">
             <TextBlock Style="{StaticResource Glyph}" Text="&#xE718;" FontSize="14" />
@@ -203,9 +210,14 @@
                   Data="M 8,1.5 A 6.5,6.5 0 1 1 8,14.5 A 6.5,6.5 0 1 1 8,1.5 Z M 6.6,6 L 8.4,4.8 V 11.2" />
           </RadioButton>
           <RadioButton Style="{StaticResource Tool.Button}" GroupName="Tool" Tag="Pixelate" Checked="OnToolChecked"
-                       ToolTip="Pixelate (X) — hide something sensitive">
+                       ToolTip="Redact (X) — pixelate, blur or cover something sensitive">
             <Path Style="{StaticResource Icon.Tool}" StrokeThickness="1.3"
                   Data="M 2.5,2.5 H 13.5 V 13.5 H 2.5 Z M 6.2,2.5 V 13.5 M 9.8,2.5 V 13.5 M 2.5,6.2 H 13.5 M 2.5,9.8 H 13.5" />
+          </RadioButton>
+          <RadioButton Style="{StaticResource Tool.Button}" GroupName="Tool" Tag="Spotlight" Checked="OnToolChecked"
+                       ToolTip="Spotlight (F) — dim everything outside an area">
+            <Path Style="{StaticResource Icon.Tool}" StrokeThickness="1.3"
+                  Data="M 1.5,2.5 H 14.5 V 13.5 H 1.5 Z M 5,5.5 H 11 V 10.5 H 5 Z M 1.5,2.5 L 5,5.5 M 14.5,2.5 L 11,5.5 M 14.5,13.5 L 11,10.5 M 1.5,13.5 L 5,10.5" />
           </RadioButton>
 
           <Border Width="1" Margin="6,6" Background="{DynamicResource Stroke.Subtle}" />
@@ -213,12 +225,16 @@
           <RadioButton Style="{StaticResource Tool.Button}" GroupName="Tool" Tag="Crop" Checked="OnToolChecked" ToolTip="Crop (C)">
             <TextBlock Style="{StaticResource Glyph.Tool}" Text="&#xE7A8;" />
           </RadioButton>
+          <RadioButton Style="{StaticResource Tool.Button}" GroupName="Tool" Tag="Eyedropper" Checked="OnToolChecked"
+                       ToolTip="Colour picker (I) — click a pixel to copy its hex colour">
+            <TextBlock Style="{StaticResource Glyph.Tool}" Text="&#xEF3C;" />
+          </RadioButton>
 
           <Border Width="1" Margin="6,6" Background="{DynamicResource Stroke.Subtle}" />
 
           <!-- Colour and size chip; opens the style flyout -->
           <Button x:Name="StyleButton" Style="{StaticResource Button.Subtle}" Click="OnOpenStyle"
-                  Height="34" Padding="10,0" ToolTip="Colour and size (S)">
+                  Height="34" Padding="10,0" ToolTip="Style of the current tool or selected mark (S)">
             <StackPanel Orientation="Horizontal">
               <Ellipse x:Name="StyleDot" Width="14" Height="14"
                        Stroke="{DynamicResource Stroke.Strong}" StrokeThickness="1" />
@@ -239,9 +255,37 @@
                  Opened="OnStyleFlyoutOpened">
             <Border Style="{StaticResource Flyout}">
               <StackPanel Width="212">
-                <TextBlock Style="{StaticResource Type.Subtitle}" Text="Colour" Margin="0,0,0,8" />
-                <UniformGrid x:Name="Swatches" Columns="6" HorizontalAlignment="Left" />
+                <StackPanel x:Name="RedactPanel" Margin="0,0,0,12">
+                  <TextBlock Style="{StaticResource Type.Subtitle}" Text="Hide with" Margin="0,0,0,8" />
+                  <StackPanel Orientation="Horizontal">
+                    <RadioButton Style="{StaticResource Tool.Button}" Width="NaN" Focusable="False" GroupName="Redact" Tag="Pixelate" Checked="OnRedactChecked">
+                      <TextBlock Style="{StaticResource Type.Body}" Text="Pixels" Margin="12,0" />
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource Tool.Button}" Width="NaN" Focusable="False" GroupName="Redact" Tag="Blur" Checked="OnRedactChecked">
+                      <TextBlock Style="{StaticResource Type.Body}" Text="Blur" Margin="12,0" />
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource Tool.Button}" Width="NaN" Focusable="False" GroupName="Redact" Tag="Solid" Checked="OnRedactChecked">
+                      <TextBlock Style="{StaticResource Type.Body}" Text="Solid" Margin="12,0" />
+                    </RadioButton>
+                  </StackPanel>
+                  <TextBlock Style="{StaticResource Type.Caption}" Margin="0,8,0,0"
+                             Text="Pixelated or blurred text can sometimes be recovered. Solid cannot." />
+                </StackPanel>
 
+                <StackPanel x:Name="ColorPanel">
+                  <TextBlock Style="{StaticResource Type.Subtitle}" Text="Colour" Margin="0,0,0,8" />
+                  <UniformGrid x:Name="Swatches" Columns="6" HorizontalAlignment="Left" />
+                </StackPanel>
+
+                <CheckBox x:Name="FillToggle"
+                          Style="{StaticResource Field.Toggle}"
+                          Focusable="False"
+                          Content="Fill"
+                          Margin="0,14,0,0"
+                          Checked="OnFillChanged"
+                          Unchecked="OnFillChanged" />
+
+                <StackPanel x:Name="SizePanel">
                 <TextBlock Style="{StaticResource Type.Subtitle}" Text="Size" Margin="0,14,0,4" />
                 <Grid Height="56" ClipToBounds="True">
                   <Path x:Name="SizePreviewStroke"
@@ -261,6 +305,7 @@
                         TickFrequency="1"
                         Margin="0,4,0,0"
                         ValueChanged="OnSizeChanged" />
+                </StackPanel>
               </StackPanel>
             </Border>
           </Popup>

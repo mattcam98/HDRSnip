@@ -16,6 +16,8 @@ public enum MarkupTool
     Ellipse,
     Text,
     Number,
+    Spotlight,
+    Eyedropper,
     Pixelate,
     Crop
 }
@@ -43,6 +45,42 @@ public sealed record MarkupDocument(ImmutableArray<Annotation> Annotations, Int3
     public MarkupDocument Replace(Annotation old, Annotation replacement) =>
         this with { Annotations = Annotations.Replace(old, replacement) };
 
+    /// <summary>
+    /// Draws every mark in order, over one shared scrim for the spotlights.
+    /// </summary>
+    /// <param name="hidden">A mark to leave out, because it is being edited or dragged.</param>
+    /// <param name="draft">A mark still being drawn, not yet part of the document.</param>
+    public void DrawMarks(DrawingContext dc, BitmapSource source, Annotation? hidden = null, Annotation? draft = null)
+    {
+        var marks = Annotations.Where(mark => !ReferenceEquals(mark, hidden)).ToList();
+        if (draft is not null)
+            marks.Add(draft);
+
+        Geometry? scrim = null;
+        foreach (var spotlight in marks.OfType<SpotlightAnnotation>())
+        {
+            scrim = new CombinedGeometry(
+                GeometryCombineMode.Exclude,
+                scrim ?? new RectangleGeometry(new Rect(0, 0, source.PixelWidth, source.PixelHeight)),
+                new RectangleGeometry(spotlight.Rect));
+        }
+
+        if (scrim is not null)
+            dc.DrawGeometry(SpotlightScrim, null, scrim);
+
+        foreach (var mark in marks)
+            mark.Draw(dc, source);
+    }
+
+    private static readonly SolidColorBrush SpotlightScrim = CreateScrim();
+
+    private static SolidColorBrush CreateScrim()
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(0x99, 0, 0, 0));
+        brush.Freeze();
+        return brush;
+    }
+
     /// <summary>The marks alone on a transparent, crop-sized bitmap, or null when there are none.</summary>
     public BitmapSource? RenderMarks(BitmapSource source)
     {
@@ -53,8 +91,7 @@ public sealed record MarkupDocument(ImmutableArray<Annotation> Annotations, Int3
         using (var dc = visual.RenderOpen())
         {
             dc.PushTransform(new TranslateTransform(-Crop.X, -Crop.Y));
-            foreach (var annotation in Annotations)
-                annotation.Draw(dc, source);
+            DrawMarks(dc, source);
             dc.Pop();
         }
 
@@ -74,25 +111,38 @@ public sealed record MarkupDocument(ImmutableArray<Annotation> Annotations, Int3
         if (IsPristine(source))
             return source;
 
-        var visual = new DrawingVisual();
-        using (var dc = visual.RenderOpen())
-        {
-            dc.PushTransform(new TranslateTransform(-Crop.X, -Crop.Y));
-            dc.DrawImage(source, new Rect(0, 0, source.PixelWidth, source.PixelHeight));
-            foreach (var annotation in Annotations)
-                annotation.Draw(dc, source);
-            dc.Pop();
-        }
-
-        // Rendered at 96 DPI so one DIP is one pixel, then re-tagged with the
-        // source DPI: a marked-up capture must paste at the same size as a plain one.
-        var target = new RenderTargetBitmap(Crop.Width, Crop.Height, 96, 96, PixelFormats.Pbgra32);
-        target.Render(visual);
-
-        // Straight alpha keeps every consumer happy: DIB, PNG and any future encoder.
+        BitmapSource straight = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
         int stride = Crop.Width * 4;
         var pixels = new byte[stride * Crop.Height];
-        new FormatConvertedBitmap(target, PixelFormats.Bgra32, null, 0).CopyPixels(pixels, stride, 0);
+        straight.CopyPixels(Crop, pixels, stride, 0);
+
+        // The marks are rendered on their own and blended in here, rather than
+        // drawing the capture through WPF as well: its renderer shifts mid-tones
+        // by a level, and a pixel no mark touches must come out exactly as captured.
+        if (RenderMarks(source) is { } marks)
+        {
+            var overlay = new byte[pixels.Length];
+            marks.CopyPixels(overlay, stride, 0);
+            for (int i = 0; i < pixels.Length; i += 4)
+            {
+                int alpha = overlay[i + 3];
+                if (alpha == 0)
+                    continue;
+
+                // "Over" in premultiplied space, then back to straight alpha.
+                int under = pixels[i + 3], keep = 255 - alpha;
+                int outAlpha = alpha + under * keep / 255;
+                for (int c = 0; c < 3; c++)
+                {
+                    int premultiplied = overlay[i + c] + pixels[i + c] * under / 255 * keep / 255;
+                    pixels[i + c] = (byte)Math.Min(255, premultiplied * 255 / outAlpha);
+                }
+
+                pixels[i + 3] = (byte)outAlpha;
+            }
+        }
 
         var flat = BitmapSource.Create(
             Crop.Width, Crop.Height, source.DpiX, source.DpiY, PixelFormats.Bgra32, null, pixels, stride);

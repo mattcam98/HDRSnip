@@ -25,21 +25,27 @@ public sealed class MarkupCanvas : Canvas
     public event Action? SelectionChanged;
     public event Action? TextEditingChanged;
     public event Action? ToolChanged;
+    public event Action<Color>? ColorPicked;
 
     private BitmapSource? _source;
     private MarkupTool _tool = MarkupTool.Select;
     private double _viewScale = 1;
 
-    private readonly Dictionary<MarkupTool, (Color Color, double Size)> _styles = new()
+    /// <summary>What each tool draws with; remembered per tool for the life of the window.</summary>
+    private readonly record struct ToolStyle(
+        Color Color, double Size, bool Fill = false, RedactMode Mode = RedactMode.Pixelate);
+
+    private readonly Dictionary<MarkupTool, ToolStyle> _styles = new()
     {
-        [MarkupTool.Pen] = (Palette.Red, 4),
-        [MarkupTool.Highlighter] = (Palette.Yellow, 18),
-        [MarkupTool.Line] = (Palette.Red, 4),
-        [MarkupTool.Arrow] = (Palette.Red, 4),
-        [MarkupTool.Rectangle] = (Palette.Red, 4),
-        [MarkupTool.Ellipse] = (Palette.Red, 4),
-        [MarkupTool.Text] = (Palette.Red, 28),
-        [MarkupTool.Number] = (Palette.Red, 22),
+        [MarkupTool.Pen] = new(Palette.Red, 4),
+        [MarkupTool.Highlighter] = new(Palette.Yellow, 18),
+        [MarkupTool.Line] = new(Palette.Red, 4),
+        [MarkupTool.Arrow] = new(Palette.Red, 4),
+        [MarkupTool.Rectangle] = new(Palette.Red, 4),
+        [MarkupTool.Ellipse] = new(Palette.Red, 4),
+        [MarkupTool.Text] = new(Palette.Red, 28),
+        [MarkupTool.Number] = new(Palette.Red, 22),
+        [MarkupTool.Pixelate] = new(Palette.Black, 0),
     };
 
     // In-flight gesture
@@ -47,7 +53,8 @@ public sealed class MarkupCanvas : Canvas
     private Point _origin;
     private Annotation? _draft;
     private List<Point>? _strokePoints;
-    private Annotation? _dragSource;   // the mark being moved by the select tool
+    private Annotation? _dragSource;   // the mark being moved or reshaped by the select tool
+    private int _handleIndex = -1;     // which of its handles is being dragged, or -1 to move it whole
     private bool _moved;
 
     // Selection
@@ -62,6 +69,8 @@ public sealed class MarkupCanvas : Canvas
     private readonly TextBox _textEditor;
     private TextAnnotation? _editingText;
     private Point _textOrigin;
+    private Color _textColor;
+    private bool _textFill;
 
     public MarkupCanvas()
     {
@@ -129,6 +138,16 @@ public sealed class MarkupCanvas : Canvas
 
     public bool HasStyle => _styles.ContainsKey(StyleTarget);
 
+    /// <summary>Redaction has a mode instead of a stroke size, and a colour only when solid.</summary>
+    public bool IsRedaction => StyleTarget == MarkupTool.Pixelate;
+
+    public bool HasColor => HasStyle && (!IsRedaction || RedactMode == RedactMode.Solid);
+
+    public bool HasSize => HasStyle && !IsRedaction;
+
+    /// <summary>Shapes can be filled; text can sit on a filled background.</summary>
+    public bool CanFill => StyleTarget is MarkupTool.Rectangle or MarkupTool.Ellipse or MarkupTool.Text;
+
     public Color Color
     {
         get => _styles.TryGetValue(StyleTarget, out var style) ? style.Color : Palette.Red;
@@ -138,11 +157,45 @@ public sealed class MarkupCanvas : Canvas
             if (!_styles.TryGetValue(target, out var style))
                 return;
 
-            _styles[target] = (value, style.Size);
+            _styles[target] = style with { Color = value };
             if (_selected is not null)
                 ReplaceSelected(_selected.WithColor(value));
             if (IsEditingText)
-                _textEditor.Foreground = new SolidColorBrush(value);
+            {
+                _textColor = value;
+                ApplyTextEditorStyle();
+            }
+        }
+    }
+
+    public bool Fill
+    {
+        get => _styles.TryGetValue(StyleTarget, out var style) && style.Fill;
+        set
+        {
+            var target = StyleTarget;
+            if (!_styles.TryGetValue(target, out var style))
+                return;
+
+            _styles[target] = style with { Fill = value };
+            if (_selected is not null)
+                ReplaceSelected(_selected.WithFill(value));
+            if (IsEditingText)
+            {
+                _textFill = value;
+                ApplyTextEditorStyle();
+            }
+        }
+    }
+
+    public RedactMode RedactMode
+    {
+        get => _styles[MarkupTool.Pixelate].Mode;
+        set
+        {
+            _styles[MarkupTool.Pixelate] = _styles[MarkupTool.Pixelate] with { Mode = value };
+            if (_selected is PixelateAnnotation redaction)
+                ReplaceSelected(redaction with { Mode = value });
         }
     }
 
@@ -157,7 +210,7 @@ public sealed class MarkupCanvas : Canvas
 
             var (min, max) = SizeRange;
             value = Math.Clamp(Math.Round(value), min, max);
-            _styles[target] = (style.Color, value);
+            _styles[target] = style with { Size = value };
             if (_selected is not null)
                 ReplaceSelected(_selected.WithSize(value));
             if (IsEditingText)
@@ -342,14 +395,12 @@ public sealed class MarkupCanvas : Canvas
 
         _editingText = existing;
         _textOrigin = existing?.Origin ?? origin;
-        var color = existing?.Color ?? Color;
-        double fontSize = existing?.FontSize ?? Size;
+        _textColor = existing?.Color ?? Color;
+        _textFill = existing?.HasBackground ?? Fill;
 
         _textEditor.Text = existing?.Text ?? string.Empty;
-        _textEditor.FontSize = fontSize;
-        _textEditor.Foreground = new SolidColorBrush(color);
-        _textEditor.CaretBrush = _textEditor.Foreground;
-        _textEditor.SelectionBrush = new SolidColorBrush(Color.FromArgb(0x55, color.R, color.G, color.B));
+        _textEditor.FontSize = existing?.FontSize ?? Size;
+        ApplyTextEditorStyle();
 
         var offset = ContentOffset;
         SetLeft(_textEditor, _textOrigin.X - offset.X);
@@ -360,6 +411,16 @@ public sealed class MarkupCanvas : Canvas
         Dispatcher.BeginInvoke(() => _textEditor.Focus(), System.Windows.Threading.DispatcherPriority.Input);
         InvalidateVisual();
         TextEditingChanged?.Invoke();
+    }
+
+    /// <summary>Makes the inline editor look like the mark it will become.</summary>
+    private void ApplyTextEditorStyle()
+    {
+        var ink = _textFill ? TextAnnotation.InkOn(_textColor) : _textColor;
+        _textEditor.Foreground = new SolidColorBrush(ink);
+        _textEditor.Background = _textFill ? new SolidColorBrush(_textColor) : Brushes.Transparent;
+        _textEditor.CaretBrush = _textEditor.Foreground;
+        _textEditor.SelectionBrush = new SolidColorBrush(Color.FromArgb(0x55, ink.R, ink.G, ink.B));
     }
 
     private void CommitTextEdit()
@@ -383,7 +444,8 @@ public sealed class MarkupCanvas : Canvas
             Origin = _textOrigin,
             Text = text,
             FontSize = _textEditor.FontSize,
-            Color = ((SolidColorBrush)_textEditor.Foreground).Color
+            Color = _textColor,
+            HasBackground = _textFill
         };
         History.Commit(existing is null ? Document.Add(replacement) : Document.Replace(existing, replacement));
     }
@@ -424,6 +486,14 @@ public sealed class MarkupCanvas : Canvas
         {
             case MarkupTool.Select:
             {
+                // A handle of the current selection wins over whatever lies beneath it.
+                _handleIndex = HitHandle(point);
+                if (_handleIndex >= 0)
+                {
+                    _dragSource = _selected;
+                    break;
+                }
+
                 var hit = HitAnnotation(point);
                 if (e.ClickCount == 2 && hit is TextAnnotation text)
                 {
@@ -451,6 +521,12 @@ public sealed class MarkupCanvas : Canvas
                     FontSize = Size,
                     Color = Color
                 }));
+                e.Handled = true;
+                return;
+
+            case MarkupTool.Eyedropper:
+                if (ColorAt(point) is { } picked)
+                    ColorPicked?.Invoke(picked);
                 e.Handled = true;
                 return;
 
@@ -502,7 +578,7 @@ public sealed class MarkupCanvas : Canvas
                 if (!_moved && delta.Length * _viewScale < DragThresholdPx)
                     return;
                 _moved = true;
-                _draft = _dragSource.Translate(delta);
+                _draft = _handleIndex >= 0 ? _dragSource.MoveHandle(_handleIndex, point) : _dragSource.Translate(delta);
                 break;
 
             case MarkupTool.Pen:
@@ -542,15 +618,21 @@ public sealed class MarkupCanvas : Canvas
                     Rect = Normalize(_origin, point, square: shift),
                     Thickness = Size,
                     Color = Color,
-                    IsEllipse = _tool == MarkupTool.Ellipse
+                    IsEllipse = _tool == MarkupTool.Ellipse,
+                    IsFilled = Fill
                 };
+                break;
+
+            case MarkupTool.Spotlight:
+                _draft = new SpotlightAnnotation { Rect = Normalize(_origin, point, square: shift) };
                 break;
 
             case MarkupTool.Pixelate:
             {
                 var rect = ToInt32Rect(Normalize(_origin, point, square: shift), _source.PixelWidth, _source.PixelHeight);
+                var style = _styles[MarkupTool.Pixelate];
                 _draft = rect.Width > 0 && rect.Height > 0
-                    ? new PixelateAnnotation { Rect = rect, BlockSize = PixelateBlock(_source) }
+                    ? new PixelateAnnotation { Rect = rect, BlockSize = PixelateBlock(_source), Mode = style.Mode, Color = style.Color }
                     : null;
                 break;
             }
@@ -593,6 +675,7 @@ public sealed class MarkupCanvas : Canvas
             case MarkupTool.Rectangle:
             case MarkupTool.Ellipse:
             case MarkupTool.Pixelate:
+            case MarkupTool.Spotlight:
                 if (_draft is not null && IsBigEnough(_draft))
                     History.Commit(Document.Add(_draft));
                 break;
@@ -607,6 +690,7 @@ public sealed class MarkupCanvas : Canvas
         _cropHandle = CropHandle.None;
         _draft = null;
         _dragSource = null;
+        _handleIndex = -1;
         _strokePoints = null;
         InvalidateVisual();
     }
@@ -645,6 +729,7 @@ public sealed class MarkupCanvas : Canvas
         _cropHandle = CropHandle.None;
         _draft = null;
         _dragSource = null;
+        _handleIndex = -1;
         _strokePoints = null;
         InvalidateVisual();
     }
@@ -663,20 +748,14 @@ public sealed class MarkupCanvas : Canvas
         dc.DrawImage(_source, new Rect(0, 0, _source.PixelWidth, _source.PixelHeight));
 
         var hidden = _editingText ?? (_moved ? _dragSource : null);
-        foreach (var annotation in Document.Annotations)
-        {
-            if (!ReferenceEquals(annotation, hidden))
-                annotation.Draw(dc, _source);
-        }
-
-        _draft?.Draw(dc, _source);
+        Document.DrawMarks(dc, _source, hidden, _draft);
 
         if (_tool == MarkupTool.Crop)
             DrawCropChrome(dc);
         else if (_selected is not null && !_dragging)
-            DrawSelection(dc, _selected.Bounds);
+            DrawSelection(dc, _selected);
         else if (_moved && _draft is not null)
-            DrawSelection(dc, _draft.Bounds);
+            DrawSelection(dc, _draft);
 
         if (IsEditingText)
             DrawTextFrame(dc);
@@ -684,9 +763,10 @@ public sealed class MarkupCanvas : Canvas
         dc.Pop();
     }
 
-    private void DrawSelection(DrawingContext dc, Rect bounds)
+    private void DrawSelection(DrawingContext dc, Annotation annotation)
     {
         double px = 1 / _viewScale;
+        var bounds = annotation.Bounds;
         bounds.Inflate(4 * px, 4 * px);
 
         // A dark halo under the dashed line keeps it visible on any capture.
@@ -694,6 +774,44 @@ public sealed class MarkupCanvas : Canvas
         halo.Freeze();
         dc.DrawRectangle(null, halo, bounds);
         dc.DrawRectangle(null, DashedPen(px), bounds);
+
+        double size = HandleSizePx * px;
+        var outline = new Pen(AccentBrush, 1.5 * px);
+        outline.Freeze();
+        foreach (var handle in annotation.Handles)
+            dc.DrawRoundedRectangle(Brushes.White, outline, new Rect(handle.X - size / 2, handle.Y - size / 2, size, size), px, px);
+    }
+
+    /// <summary>Index of the selected mark's handle under a point, or -1.</summary>
+    private int HitHandle(Point point)
+    {
+        if (_selected is null)
+            return -1;
+
+        double slack = (HandleSizePx / 2 + HitSlackPx) / _viewScale;
+        var handles = _selected.Handles;
+        for (int i = 0; i < handles.Count; i++)
+        {
+            if (Math.Abs(point.X - handles[i].X) <= slack && Math.Abs(point.Y - handles[i].Y) <= slack)
+                return i;
+        }
+
+        return -1;
+    }
+
+    /// <summary>The capture's own colour at an image point, ignoring any marks drawn over it.</summary>
+    private Color? ColorAt(Point point)
+    {
+        int x = (int)point.X, y = (int)point.Y;
+        if (_source is null || x < 0 || y < 0 || x >= _source.PixelWidth || y >= _source.PixelHeight)
+            return null;
+
+        BitmapSource source = _source.Format == PixelFormats.Bgra32
+            ? _source
+            : new FormatConvertedBitmap(_source, PixelFormats.Bgra32, null, 0);
+        var pixel = new byte[4];
+        source.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
+        return Color.FromRgb(pixel[2], pixel[1], pixel[0]);
     }
 
     private void DrawTextFrame(DrawingContext dc)
@@ -933,7 +1051,8 @@ public sealed class MarkupCanvas : Canvas
     {
         Cursor = _tool switch
         {
-            MarkupTool.Select => HitAnnotation(point) is not null ? Cursors.SizeAll : Cursors.Arrow,
+            MarkupTool.Select => HitHandle(point) >= 0 ? Cursors.Hand
+                : HitAnnotation(point) is not null ? Cursors.SizeAll : Cursors.Arrow,
             MarkupTool.Crop => CursorFor(HitCropHandle(point)),
             MarkupTool.Text => Cursors.IBeam,
             _ => Cursors.Cross
@@ -950,6 +1069,7 @@ public sealed class MarkupCanvas : Canvas
         ShapeAnnotation => MarkupTool.Rectangle,
         TextAnnotation => MarkupTool.Text,
         NumberAnnotation => MarkupTool.Number,
+        SpotlightAnnotation => MarkupTool.Spotlight,
         _ => MarkupTool.Pixelate
     };
 

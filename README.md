@@ -34,6 +34,7 @@ looks like what you saw.
 - **Full-screen snip** of the monitor under the cursor
 - **Delayed snip** (3, 5 or 10 s) from the tray, for menus and hover states
 - **Pixel-exact selection** — an 8× magnifier with coordinates, and optional handles to adjust a region before capturing
+- **Copy text** out of any capture with the Windows OCR engine, on your PC
 - **Pin to screen** — float any capture above your other windows as a reference
 - **Recent captures** — reopen, copy or pin the last eight snips of the session; nothing is kept after exit
 - **Optional mouse pointer** in captures
@@ -44,7 +45,7 @@ looks like what you saw.
 - **Global hotkeys**, recorded in-app — no config file editing
 - Copies to the clipboard as both DIB and lossless PNG
 - Toast notification, click to open the editor; or open the editor immediately
-- **Markup editor** — pen, highlighter, line, arrow, rectangle, ellipse, text, numbered steps, pixelate and crop, with undo/redo; marks stay editable until you copy or save
+- **Markup editor** — pen, highlighter, line, arrow, shapes, text, numbered steps, redaction, spotlight and crop, with undo/redo; marks stay editable until you copy or save
 - Editor with fit/actual-size zoom, copy, save, and save-as
 - Follows the Windows light/dark theme, live
 - Multi-monitor and per-monitor-DPI aware
@@ -91,15 +92,17 @@ The editor opens on every capture (or from the toast). Pick a tool, draw, then *
 
 | Tool | Key | Notes |
 |---|---|---|
-| Select | `V` | Click a mark to move it, restyle it from the colour chip, or press `Delete`. Double-click text to edit it |
+| Select | `V` | Click a mark to move it, drag its handles to reshape it, restyle it from the style chip, or press `Delete`. Double-click text to edit it |
 | Pen · Highlighter | `P` · `H` | Hold `Shift` for a straight line |
 | Line · Arrow | `L` · `A` | Hold `Shift` to snap to 45° |
-| Rectangle · Ellipse | `R` · `E` | Hold `Shift` for a square or circle |
-| Text | `T` | Click to place. `Enter` adds a line, `Ctrl+Enter` or clicking away finishes, `Esc` cancels |
+| Rectangle · Ellipse | `R` · `E` | Hold `Shift` for a square or circle. Can be filled |
+| Text | `T` | Click to place. Optional coloured background. `Enter` adds a line, `Ctrl+Enter` or clicking away finishes, `Esc` cancels |
 | Numbered step | `N` | Each click places the next number |
-| Pixelate | `X` | Drag over anything that should not be readable |
+| Redact | `X` | Drag over anything that should not be readable: pixelate, blur, or a solid box. Only solid cannot be reversed |
+| Spotlight | `F` | Drag over the area to keep bright; the rest dims |
 | Crop | `C` | Drag the handles or draw a new area, then `Enter` or **Apply crop**. Non-destructive: crop again to widen |
-| Colour & size | `S` | Remembered per tool |
+| Colour picker | `I` | Click a pixel to copy its hex colour |
+| Style | `S` | Colour, size, fill or redaction mode; remembered per tool |
 | Undo · Redo | `Ctrl+Z` · `Ctrl+Y` | Every mark, move, restyle and crop is one step |
 
 Closing with unexported markup asks first. If a new capture arrives while the editor holds

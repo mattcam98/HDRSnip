@@ -5,12 +5,13 @@ namespace HDRSnip.Editing;
 /// <summary>Twelve swatches that read on both dark and light captures.</summary>
 public static class Palette
 {
+    public static readonly Color Black = Color.FromRgb(0x14, 0x14, 0x1A);
     public static readonly Color Red = Color.FromRgb(0xE5, 0x48, 0x4D);
     public static readonly Color Yellow = Color.FromRgb(0xFF, 0xD6, 0x0A);
 
     public static readonly IReadOnlyList<(Color Color, string Name)> Swatches =
     [
-        (Color.FromRgb(0x14, 0x14, 0x1A), "Black"),
+        (Black, "Black"),
         (Color.FromRgb(0xFF, 0xFF, 0xFF), "White"),
         (Color.FromRgb(0x6F, 0x72, 0x7C), "Grey"),
         (Red, "Red"),

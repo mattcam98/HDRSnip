@@ -25,6 +25,7 @@ public partial class EditorWindow : Window
     private readonly Dictionary<MarkupTool, RadioButton> _toolButtons = new();
     private readonly List<RadioButton> _swatches = new();
     private readonly List<RadioButton> _toneButtons;
+    private readonly List<RadioButton> _redactButtons;
     private CaptureResult _result = null!;
     private string? _savedPath;
     private double? _zoom;          // null means fit to viewport
@@ -44,10 +45,12 @@ public partial class EditorWindow : Window
         foreach (var button in FindGroup(this, "Tool"))
             _toolButtons[Enum.Parse<MarkupTool>((string)button.Tag)] = button;
         _toneButtons = FindGroup(ToneFlyout.Child, "Tone").ToList();
+        _redactButtons = FindGroup(StyleFlyout.Child, "Redact").ToList();
 
         Markup.History.Changed += OnHistoryChanged;
         Markup.SelectionChanged += SyncStyle;
         Markup.ToolChanged += OnCanvasToolChanged;
+        Markup.ColorPicked += OnColorPicked;
         Markup.TextEditingChanged += UpdateHint;
 
         SourceInitialized += (_, _) => ThemeService.ApplyToWindow(this);
@@ -106,6 +109,60 @@ public partial class EditorWindow : Window
         else
         {
             Status.Text = "Another app is holding the clipboard — try again";
+        }
+    }
+
+    private async void OnCopyText(object sender, RoutedEventArgs e)
+    {
+        Markup.CommitPendingEdits();
+        CopyTextButton.IsEnabled = false;
+        try
+        {
+            // The capture as cropped, without marks: a redaction box is not text to read.
+            var crop = Markup.Document.Crop;
+            BitmapSource image = Markup.Document.IsCropped(_result.Image)
+                ? new CroppedBitmap(_result.Image, crop)
+                : _result.Image;
+
+            string? text = await TextRecognizer.RecognizeAsync(image);
+            if (text is null)
+            {
+                Status.Text = "Windows has no text-recognition language installed";
+            }
+            else if (text.Length == 0)
+            {
+                Status.Text = "No text found";
+            }
+            else
+            {
+                Clipboard.SetText(text);
+                int lines = text.Split('\n').Length;
+                Status.Text = lines == 1 ? "Copied 1 line of text" : $"Copied {lines} lines of text";
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogError("Ocr", ex);
+            Status.Text = $"Could not read text: {ex.Message}";
+        }
+        finally
+        {
+            CopyTextButton.IsEnabled = true;
+        }
+    }
+
+    private void OnColorPicked(Color color)
+    {
+        string hex = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+        try
+        {
+            Clipboard.SetText(hex);
+            Status.Text = $"Copied {hex}";
+        }
+        catch (Exception ex)
+        {
+            App.LogError("Eyedropper", ex);
+            Status.Text = $"{hex} — another app is holding the clipboard";
         }
     }
 
@@ -291,7 +348,7 @@ public partial class EditorWindow : Window
             : Markup.Tool switch
             {
                 MarkupTool.Select when Markup.Selected is not null =>
-                    "Drag to move · arrow keys nudge · Delete removes · pick a colour or size to restyle",
+                    "Drag to move · drag a handle to reshape · arrow keys nudge · Delete removes",
                 MarkupTool.Select => "Click a mark to select it · double-click text to edit",
                 MarkupTool.Pen or MarkupTool.Highlighter => "Drag to draw · hold Shift for a straight line",
                 MarkupTool.Line or MarkupTool.Arrow => "Drag to draw · hold Shift to snap to 45°",
@@ -300,6 +357,8 @@ public partial class EditorWindow : Window
                 MarkupTool.Text => "Click where the text should start",
                 MarkupTool.Number => "Click to place the next number",
                 MarkupTool.Pixelate => "Drag over anything that should not be readable",
+                MarkupTool.Spotlight => "Drag over the area to keep bright · everything else dims",
+                MarkupTool.Eyedropper => "Click a pixel to copy its colour as hex",
                 MarkupTool.Crop => "Drag the handles or draw a new area · Enter applies · Esc cancels",
                 _ => string.Empty
             };
@@ -347,6 +406,25 @@ public partial class EditorWindow : Window
         SyncStyle();
     }
 
+    private void OnFillChanged(object sender, RoutedEventArgs e)
+    {
+        if (_syncingStyle)
+            return;
+
+        Markup.Fill = FillToggle.IsChecked == true;
+        _flattened = null;
+    }
+
+    private void OnRedactChecked(object sender, RoutedEventArgs e)
+    {
+        if (_syncingStyle || sender is not RadioButton { Tag: string tag })
+            return;
+
+        Markup.RedactMode = Enum.Parse<RedactMode>(tag);
+        _flattened = null;
+        SyncStyle();
+    }
+
     private void OnSizeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_syncingStyle)
@@ -375,8 +453,18 @@ public partial class EditorWindow : Window
             }
 
             var color = Markup.Color;
-            StyleDot.Fill = new SolidColorBrush(color);
-            StyleSizeLabel.Text = SizeLabel(Markup.Size);
+            StyleDot.Fill = Markup.HasColor ? new SolidColorBrush(color) : null;
+            StyleSizeLabel.Text = Markup.IsRedaction ? Markup.RedactMode.ToString() : SizeLabel(Markup.Size);
+
+            RedactPanel.Visibility = Markup.IsRedaction ? Visibility.Visible : Visibility.Collapsed;
+            ColorPanel.Visibility = Markup.HasColor ? Visibility.Visible : Visibility.Collapsed;
+            SizePanel.Visibility = Markup.HasSize ? Visibility.Visible : Visibility.Collapsed;
+            FillToggle.Visibility = Markup.CanFill ? Visibility.Visible : Visibility.Collapsed;
+            FillToggle.Content = Markup.StyleTarget == MarkupTool.Text ? "Background" : "Fill";
+            FillToggle.IsChecked = Markup.Fill;
+
+            foreach (var choice in _redactButtons)
+                choice.IsChecked = (string)choice.Tag == Markup.RedactMode.ToString();
 
             foreach (var swatch in _swatches)
                 swatch.IsChecked = (Color)swatch.Tag == color;
@@ -579,6 +667,8 @@ public partial class EditorWindow : Window
             case Key.T when !control && !alt: Markup.Tool = MarkupTool.Text; break;
             case Key.N when !control && !alt: Markup.Tool = MarkupTool.Number; break;
             case Key.X when !control && !alt: Markup.Tool = MarkupTool.Pixelate; break;
+            case Key.F when !control && !alt: Markup.Tool = MarkupTool.Spotlight; break;
+            case Key.I when !control && !alt: Markup.Tool = MarkupTool.Eyedropper; break;
             case Key.C when !control && !alt: Markup.Tool = MarkupTool.Crop; break;
             case Key.S when !control && !alt: OnOpenStyle(sender, e); break;
 

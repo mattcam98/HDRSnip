@@ -15,6 +15,12 @@
 - **Mouse pointer in captures** (optional, in Settings), including inverting pointers such as the text I-beam.
 - **Pin to screen:** float a capture above every other window from the editor, the tray menu or Recent captures. Drag to move, scroll to resize, Esc or double-click to close.
 - **Recent captures:** the tray menu lists the last eight captures of the session to reopen, copy or pin. Held in memory only; nothing is kept after exit.
+- **Redaction modes:** the Pixelate tool now also blurs or covers with a solid colour. Solid is the one that cannot be reversed.
+- **Spotlight** (`F`): dims everything outside the areas you drag.
+- **Fills:** rectangles and ellipses can be filled, and text can sit on a coloured plate.
+- **Reshape marks:** selected lines, shapes, redactions and spotlights have handles to drag.
+- **Copy text:** recognises the text in a capture with the OCR engine built into Windows, entirely on your PC.
+- **Colour picker** (`I`): click a pixel to copy its hex colour.
 - Editor zoom is now in screen pixels, so 100% is pixel-exact on scaled displays.
 
 ### Faster and lighter
@@ -32,6 +38,7 @@
 - A failed auto-save no longer discards the capture; the toast and editor say so.
 - Two captures in the same second no longer overwrite each other on disk.
 - Marked-up captures keep the source DPI, so they paste at the same size as unmarked ones.
+- Exporting a marked-up capture no longer shifts pixels the marks do not touch; they now come out exactly as captured.
 - `--edit` on a JPEG or BMP saves back in that format rather than writing PNG data under the old name.
 - Exit asks before discarding unexported markup, and honours the answer.
 - In the crop tool, Undo with nothing to undo no longer reverts the last handle drag.
