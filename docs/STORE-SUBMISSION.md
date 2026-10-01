@@ -60,13 +60,19 @@ Duplication) and tone-maps it properly, so text and colour stay readable when yo
 or share.
 
 • Region snip over a frozen, HDR-correct preview — what you drag is what you get
-• Full-screen capture of the monitor under the cursor
+• Window snip: click a window instead of dragging
+• Full-screen capture of the monitor under the cursor, and delayed capture for menus
+• Pixel-exact selection with a magnifier and optional adjustable handles
 • Three tone-mapping curves: Windows/OBS, ACES filmic, Reinhard
-• Adjustable SDR white level to match your display
+• SDR white level read from Windows for each monitor, with a manual override
+• Re-tone-map a capture afterwards, or save the real HDR image as JPEG XR
 • Global hotkeys you can record in the app
 • Copies to the clipboard automatically, as DIB and lossless PNG
-• Click the notification to open the editor, zoom and save
-• Mark up captures: pen, highlighter, arrows, shapes, text, pixelate and crop, with undo
+• Notification with Edit, Save and Pin buttons
+• Mark up captures: pen, highlighter, arrows, shapes, text, numbered steps, spotlight and crop, with undo
+• Redact with pixelate, blur or a solid box
+• Copy the text out of a capture, recognised on your PC
+• Pin a capture above your other windows, and reopen recent captures from the tray
 • Lives in the notification area and uses no CPU while idle
 • Follows your Windows light or dark theme
 • Multi-monitor and per-monitor-DPI aware
@@ -75,15 +81,32 @@ Free and open source under the MIT licence:
 https://github.com/mattcam98/HDRSnip
 ```
 
+
+**What's new in this version** (1.3.0)
+```
+New capture modes: click a window to snip it, delay a snip to catch menus, and line up a region with a magnifier and optional adjustable handles.
+
+HDR: the SDR white level is now read from Windows for each monitor. In the editor you can change the tone-mapping afterwards with a live preview, and save the original HDR image as JPEG XR.
+
+Editor: numbered steps, spotlight, filled shapes, text backgrounds, blur and solid redaction, handles to reshape marks, a colour picker, and Copy text (recognised on your PC).
+
+Workflow: pin a capture above other windows, reopen recent captures from the tray, drag an image straight into another app, choose your own file names and PNG or JPEG, and use Edit, Save and Pin buttons on the notification. The mouse pointer can be included in captures.
+
+Faster and lighter: the first snip no longer has a start-up delay, and HDRSnip uses far less memory while idle.
+
+Fixes: captures no longer come out too dark or bright after toggling HDR, marked-up exports keep every untouched pixel exact, and a failed auto-save no longer loses the capture.
+```
+
 **Product features** (one per field)
 ```
 HDR-correct screenshots when Windows HDR is on
 FP16 scRGB capture via DXGI Desktop Duplication
-Region snip over a frozen HDR-correct preview
-Three tone-mapping curves with adjustable SDR white
+Region, window, full-screen and delayed snips
+Three tone-mapping curves; SDR white read from Windows
+Save the real HDR image as JPEG XR
 Copies to the clipboard as DIB and lossless PNG
 Recordable global hotkeys
-Built-in editor with markup tools, crop, zoom, copy and save
+Editor with markup, redaction, crop, text recognition and pinning
 Follows the Windows light and dark theme
 Open source under the MIT licence
 ```
@@ -221,7 +244,7 @@ and a reviewer who knows that should not find an overstatement in your submissio
 ## Sideloading for testers
 
 ```powershell
-Add-AppxPackage -Path .\artifacts\HDRSnip_1.1.1.0_x64.msix
+Add-AppxPackage -Path .\artifacts\HDRSnip_1.3.0.0_x64.msix
 ```
 
 Unsigned packages need developer mode or a trusted certificate. Store installs do not.

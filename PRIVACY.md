@@ -1,6 +1,6 @@
 # Privacy policy
 
-**HDRSnip — last updated 27 August 2026**
+**HDRSnip — last updated 2 October 2026**
 
 HDRSnip does not collect, store, or transmit any personal information.
 
@@ -12,6 +12,9 @@ HDRSnip captures screenshots. Everything it produces stays on your computer:
 |---|---|
 | Screenshots | Your clipboard, and — only if you save them — a folder you choose (by default `Pictures\HDRSnip`) |
 | A temporary thumbnail | `%TEMP%\HDRSnip`, used solely to show a preview inside the capture notification, and overwritten by the next capture |
+| Images you drag out of the editor | `%TEMP%\HDRSnip\drag`, so the app you drop onto can read the file. Emptied every time HDRSnip starts and exits |
+| Recent captures | Held in memory only, for the tray's *Recent captures* list. Never written to disk, and gone when HDRSnip exits |
+| Text you copy out of a capture | Recognised on your PC by the text-recognition engine built into Windows, then placed on your clipboard |
 | Your settings | `%LOCALAPPDATA%\HDRSnip\config.json` — save folder, tone-mapping choice, hotkeys |
 | Error details | `%LOCALAPPDATA%\HDRSnip\errors.log`, written only when something fails |
 
@@ -38,7 +41,7 @@ HDRSnip does not attempt to work around this.
 Everything HDRSnip writes can be removed by deleting these folders:
 
 - `%LOCALAPPDATA%\HDRSnip` — settings and error log
-- `%TEMP%\HDRSnip` — the notification thumbnail
+- `%TEMP%\HDRSnip` — the notification thumbnail and any images staged for drag-out
 - Your chosen screenshot folder — the screenshots you saved
 
 Uninstalling HDRSnip through Windows Settings removes the application itself.

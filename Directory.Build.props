@@ -11,7 +11,7 @@
     <Authors>HDRSnip contributors</Authors>
     <Copyright>Copyright (c) 2026 HDRSnip contributors</Copyright>
     <Description>HDR-aware snipping tool for Windows. Captures the desktop in FP16 scRGB and tone-maps to SDR so screenshots stay sharp when HDR is on. Includes a lightweight markup editor.</Description>
-    <Version>1.2.0</Version>
+    <Version>1.3.0</Version>
     <PackageProjectUrl>https://github.com/mattcam98/HDRSnip</PackageProjectUrl>
     <RepositoryUrl>https://github.com/mattcam98/HDRSnip.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
