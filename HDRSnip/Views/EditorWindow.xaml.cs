@@ -52,6 +52,7 @@ public partial class EditorWindow : Window
 
         SourceInitialized += (_, _) => ThemeService.ApplyToWindow(this);
         DpiChanged += (_, _) => ApplyZoom();
+        Closed += (_, _) => App.TrimMemoryWhenIdle();
         Load(result);
     }
 
@@ -139,6 +140,7 @@ public partial class EditorWindow : Window
                 // The float pixels as captured, not the tone-mapped preview; marks sit at SDR white.
                 var document = Markup.Document;
                 ImageCodec.SaveHdr(frame, document.Crop, document.RenderMarks(_result.Image), _capture.WhiteLevelFor(frame), path);
+                App.TrimMemoryWhenIdle();
             }
             else
             {

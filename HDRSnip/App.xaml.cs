@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using HDRSnip.Capture;
 using HDRSnip.Models;
 using HDRSnip.Services;
@@ -160,6 +161,20 @@ public partial class App : Application
         }
         catch { /* the UI itself is unhappy; the log already has it */ }
     }
+
+    /// <summary>
+    /// Returns memory once the UI goes quiet. Captures and editing leave
+    /// frame-sized buffers and discarded bitmaps behind, and the app then idles in
+    /// the tray: nothing else would prompt their release. WPF bitmaps free their
+    /// pixels in finalizers, hence the second collection.
+    /// </summary>
+    public static void TrimMemoryWhenIdle() =>
+        Current?.Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        });
 
     /// <summary>
     /// Appends to %LOCALAPPDATA%\HDRSnip\errors.log. Never throws, and needs no

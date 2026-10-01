@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows;
-using System.Windows.Threading;
 using HDRSnip.Capture;
 using HDRSnip.Models;
 using HDRSnip.Services;
@@ -189,20 +188,8 @@ public partial class TrayHostWindow : Window
         {
             _busy = false;
 
-            _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, ReleaseCaptureMemory);
+            App.TrimMemoryWhenIdle();
         }
-    }
-
-    /// <summary>
-    /// A capture leaves frame-sized buffers and discarded bitmaps behind, and the
-    /// app then idles in the tray: nothing else would prompt their release. WPF
-    /// bitmaps free their pixels in finalizers, hence the second collection.
-    /// </summary>
-    private static void ReleaseCaptureMemory()
-    {
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect(GC.MaxGeneration, GCCollectionMode.Aggressive, blocking: true, compacting: true);
     }
 
     private async Task CaptureFullScreenAsync(TimeSpan settle)
