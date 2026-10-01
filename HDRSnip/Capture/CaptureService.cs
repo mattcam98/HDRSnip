@@ -60,14 +60,20 @@ public sealed class CaptureService(AppConfig config)
         });
     }
 
-    /// <summary>A timestamped path in the save folder that does not exist yet.</summary>
+    /// <summary>The configured name and format for a capture saved right now.</summary>
+    public string DefaultFileName() =>
+        FileNameTemplate.Expand(config.FileNameTemplate, DateTime.Now) + (config.SaveFormat == SaveFormat.Jpeg ? ".jpg" : ".png");
+
+    /// <summary>A path in the save folder, built from the name template, that does not exist yet.</summary>
     public string BuildSavePath()
     {
         Directory.CreateDirectory(config.SaveFolder);
-        string stem = Path.Combine(config.SaveFolder, $"HDRSnip_{DateTime.Now:yyyyMMdd_HHmmss}");
-        string path = stem + ".png";
+        string name = DefaultFileName();
+        string stem = Path.Combine(config.SaveFolder, Path.GetFileNameWithoutExtension(name));
+        string extension = Path.GetExtension(name);
+        string path = stem + extension;
         for (int n = 2; File.Exists(path); n++)
-            path = $"{stem}_{n}.png";
+            path = $"{stem}_{n}{extension}";
         return path;
     }
 
@@ -78,7 +84,8 @@ public sealed class CaptureService(AppConfig config)
     private CaptureResult Finish(CapturedFrame frame)
     {
         var image = ToSdr(frame);
-        byte[]? png = config.CopyToClipboard || config.AutoSave ? ImageCodec.EncodePng(image) : null;
+        bool savePng = config.AutoSave && config.SaveFormat == SaveFormat.Png;
+        byte[]? png = config.CopyToClipboard || savePng ? ImageCodec.EncodePng(image) : null;
 
         string? savedPath = null;
         bool saveFailed = false;
@@ -88,7 +95,10 @@ public sealed class CaptureService(AppConfig config)
             try
             {
                 savedPath = BuildSavePath();
-                File.WriteAllBytes(savedPath, png!);
+                if (savePng)
+                    File.WriteAllBytes(savedPath, png!);
+                else
+                    ImageCodec.Save(image, savedPath);
             }
             catch (Exception ex)
             {

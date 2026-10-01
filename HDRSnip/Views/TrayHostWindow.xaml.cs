@@ -38,14 +38,14 @@ public partial class TrayHostWindow : Window
         _hotkeys = new HotkeyService(this);
 
         ApplyTrayIcon();
-        NotificationService.OpenEditorRequested += OpenLastInEditor;
+        NotificationService.ActionRequested += OnToastAction;
         SourceInitialized += (_, _) => RegisterHotkeys();
         Closed += OnClosed;
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
-        NotificationService.OpenEditorRequested -= OpenLastInEditor;
+        NotificationService.ActionRequested -= OnToastAction;
         _hotkeys.Dispose();
         Tray.Dispose();
         _iconStream?.Dispose();
@@ -99,6 +99,41 @@ public partial class TrayHostWindow : Window
 
     private void OnFullScreen(object sender, RoutedEventArgs e) =>
         Run(() => CaptureFullScreenAsync(ChromeSettleDelay));
+
+    private void OnToastAction(ToastAction action)
+    {
+        switch (action)
+        {
+            case ToastAction.Save:
+                SaveLast();
+                break;
+            case ToastAction.Pin:
+                OnPinLast(this, new RoutedEventArgs());
+                break;
+            default:
+                OpenLastInEditor();
+                break;
+        }
+    }
+
+    private void SaveLast()
+    {
+        if (_history.Latest is not { } latest)
+            return;
+
+        try
+        {
+            string path = _capture.BuildSavePath();
+            ImageCodec.Save(latest.Open().Image, path);
+            NotificationService.ShowMessage("Screenshot saved", path);
+        }
+        catch (Exception ex)
+        {
+            App.LogError("ToastSave", ex);
+            MessageBox.Show($"Could not save the capture.\n\n{ex.Message}", "HDRSnip",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
 
     private void OnOpenLast(object sender, RoutedEventArgs e) => OpenLastInEditor();
 

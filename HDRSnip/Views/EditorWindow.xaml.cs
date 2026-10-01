@@ -177,18 +177,63 @@ public partial class EditorWindow : Window
     private void OnSaveAs(object sender, RoutedEventArgs e)
     {
         Markup.CommitPendingEdits();
+        string suggested = _savedPath is null ? _capture.DefaultFileName() : Path.GetFileName(_savedPath);
+        string extension = Path.GetExtension(suggested).ToLowerInvariant();
         var dialog = new SaveFileDialog
         {
-            Filter = _result.Frame is null
-                ? "PNG image|*.png"
-                : "PNG image|*.png|JPEG XR HDR image|*.jxr",
-            DefaultExt = ".png",
-            FileName = _savedPath is null ? $"HDRSnip_{DateTime.Now:yyyyMMdd_HHmmss}.png" : Path.GetFileName(_savedPath),
+            Filter = "PNG image|*.png|JPEG image|*.jpg;*.jpeg" + (_result.Frame is null ? "" : "|JPEG XR HDR image|*.jxr"),
+            FilterIndex = extension switch { ".jpg" or ".jpeg" => 2, ".jxr" => 3, _ => 1 },
+            DefaultExt = extension,
+            FileName = suggested,
             InitialDirectory = Path.GetDirectoryName(_savedPath) ?? App.Config.SaveFolder
         };
 
         if (dialog.ShowDialog(this) == true)
             SaveTo(dialog.FileName);
+    }
+
+    // ------------------------------------------------------------ drag out
+
+    private Point? _gripPressed;
+
+    private void OnGripDown(object sender, MouseButtonEventArgs e) => _gripPressed = e.GetPosition(this);
+
+    /// <summary>
+    /// Dragging the grip hands the image to another app as a file. The file is
+    /// written to the temp folder first, because a drop target wants a path.
+    /// </summary>
+    private void OnGripMove(object sender, MouseEventArgs e)
+    {
+        if (_gripPressed is not { } start || e.LeftButton != MouseButtonState.Pressed)
+        {
+            _gripPressed = null;
+            return;
+        }
+
+        var moved = e.GetPosition(this) - start;
+        if (Math.Abs(moved.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(moved.Y) < SystemParameters.MinimumVerticalDragDistance)
+            return;
+
+        _gripPressed = null;
+        Markup.CommitPendingEdits();
+        try
+        {
+            string path = Path.Combine(App.DragOutFolder, _capture.DefaultFileName());
+            ImageCodec.Save(Flattened, path);
+
+            var data = new DataObject(DataFormats.FileDrop, new[] { path });
+            if (DragDrop.DoDragDrop(DragGrip, data, DragDropEffects.Copy) != DragDropEffects.None)
+            {
+                _dirty = false;
+                Status.Text = "Dropped into another app";
+            }
+        }
+        catch (Exception ex)
+        {
+            App.LogError("DragOut", ex);
+            Status.Text = $"Could not drag the image out: {ex.Message}";
+        }
     }
 
     /// <summary>Saves to <paramref name="path"/>, or to a new file in the captures folder when it is null.</summary>

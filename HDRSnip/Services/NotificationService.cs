@@ -12,10 +12,12 @@ namespace HDRSnip.Services;
 public static class NotificationService
 {
     private const string ActionKey = "action";
-    private const string OpenEditor = "openEditor";
+    private const string Edit = "openEditor";
+    private const string Save = "save";
+    private const string Pin = "pin";
     private const int PreviewMaxEdge = 720;
 
-    public static event Action? OpenEditorRequested;
+    public static event Action<ToastAction>? ActionRequested;
 
     public static void Initialize() => ToastNotificationManagerCompat.OnActivated += OnActivated;
 
@@ -29,9 +31,16 @@ public static class NotificationService
         detail += result.SaveFailed ? " · Auto-save failed, check the save folder" : " · Click to edit or save";
 
         var builder = new ToastContentBuilder()
-            .AddArgument(ActionKey, OpenEditor)
+            .AddArgument(ActionKey, Edit)
             .AddText(Headline(result, copied))
-            .AddText(detail);
+            .AddText(detail)
+            .AddButton(new ToastButton().SetContent("Edit").AddArgument(ActionKey, Edit));
+
+        // Nothing to offer when auto-save already wrote the file.
+        if (result.SavedPath is null)
+            builder.AddButton(new ToastButton().SetContent("Save").AddArgument(ActionKey, Save));
+
+        builder.AddButton(new ToastButton().SetContent("Pin").AddArgument(ActionKey, Pin));
 
         if (TryWritePreview(result.Image) is { } previewPath)
             builder.AddInlineImage(new Uri(previewPath));
@@ -61,12 +70,31 @@ public static class NotificationService
         }
     }
 
+    /// <summary>A short confirmation with no actions, for work a toast button started.</summary>
+    public static void ShowMessage(string title, string detail) =>
+        new ToastContentBuilder().AddText(title).AddText(detail).Show();
+
     private static void OnActivated(ToastNotificationActivatedEventArgsCompat e)
     {
         var arguments = ToastArguments.Parse(e.Argument);
-        if (!arguments.TryGetValue(ActionKey, out string action) || action != OpenEditor)
+        if (!arguments.TryGetValue(ActionKey, out string action) || ParseAction(action) is not { } requested)
             return;
 
-        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => OpenEditorRequested?.Invoke());
+        System.Windows.Application.Current?.Dispatcher.BeginInvoke(() => ActionRequested?.Invoke(requested));
     }
+
+    internal static ToastAction? ParseAction(string action) => action switch
+    {
+        Edit => ToastAction.Edit,
+        Save => ToastAction.Save,
+        Pin => ToastAction.Pin,
+        _ => null
+    };
+}
+
+public enum ToastAction
+{
+    Edit,
+    Save,
+    Pin
 }

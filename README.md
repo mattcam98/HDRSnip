@@ -37,6 +37,8 @@ looks like what you saw.
 - **Copy text** out of any capture with the Windows OCR engine, on your PC
 - **Pin to screen** — float any capture above your other windows as a reference
 - **Recent captures** — reopen, copy or pin the last eight snips of the session; nothing is kept after exit
+- **Drag out** of the editor straight into another app or folder
+- **Your file names** — a name template with date and time tokens, saved as PNG or JPEG
 - **Optional mouse pointer** in captures
 - **Three tone-mapping curves** — Windows/OBS (default, best for UI and text), ACES filmic, Reinhard
 - **Change your mind afterwards** — re-tone-map an HDR capture in the editor with a live preview
@@ -44,7 +46,7 @@ looks like what you saw.
 - **SDR white level read from Windows** per monitor, with a manual override
 - **Global hotkeys**, recorded in-app — no config file editing
 - Copies to the clipboard as both DIB and lossless PNG
-- Toast notification, click to open the editor; or open the editor immediately
+- Toast notification with Edit, Save and Pin buttons; or open the editor immediately
 - **Markup editor** — pen, highlighter, line, arrow, shapes, text, numbered steps, redaction, spotlight and crop, with undo/redo; marks stay editable until you copy or save
 - Editor with fit/actual-size zoom, copy, save, and save-as
 - Follows the Windows light/dark theme, live
@@ -124,7 +126,8 @@ format Windows uses for its own HDR screenshots — with markup composited at SD
 | SDR white level | Read from each monitor's Windows *SDR content brightness* by default. Turn that off to set a fixed level: higher = darker output |
 | Tone-mapping curve | Windows/OBS for UI and text, ACES for games and video |
 | Copy to clipboard | On by default |
-| Auto-save PNG | Also writes to the save folder on every capture |
+| File name | Template for saved captures. Tokens: `{date}` `{time}` `{year}` `{month}` `{day}` `{hour}` `{minute}` `{second}`. PNG or JPEG |
+| Auto-save | Also writes to the save folder on every capture |
 | Open editor immediately | Skips the toast |
 | Include the mouse pointer | Off by default. Not included in JPEG XR exports |
 | Adjust a region before capturing | Keeps the dragged region on screen with handles; Enter or double-click captures |

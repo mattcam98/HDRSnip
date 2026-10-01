@@ -33,6 +33,8 @@ public partial class SettingsWindow : Window
         };
 
         SaveFolderBox.Text = config.SaveFolder;
+        FileNameBox.Text = config.FileNameTemplate;
+        FormatBox.SelectedIndex = config.SaveFormat == SaveFormat.Jpeg ? 1 : 0;
         CopyToggle.IsChecked = config.CopyToClipboard;
         AutoSaveToggle.IsChecked = config.AutoSave;
         CursorToggle.IsChecked = config.CaptureCursor;
@@ -81,6 +83,17 @@ public partial class SettingsWindow : Window
         ManualWhite.Opacity = manual ? 1 : 0.4;
     }
 
+    /// <summary>Shows what the template produces right now, so tokens need no documentation to try.</summary>
+    private void OnNameChanged(object sender, RoutedEventArgs e)
+    {
+        if (FileNameExample is null || FileNameBox is null || FormatBox is null)
+            return;
+
+        string extension = FormatBox.SelectedIndex == 1 ? ".jpg" : ".png";
+        FileNameExample.Text =
+            $"Saves as {FileNameTemplate.Expand(FileNameBox.Text, DateTime.Now)}{extension} · tokens: {FileNameTemplate.TokenHelp}";
+    }
+
     private void OnBrowse(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFolderDialog
@@ -103,6 +116,8 @@ public partial class SettingsWindow : Window
 
         var folder = SaveFolderBox.Text.Trim();
         _config.SaveFolder = folder.Length == 0 ? AppConfig.DefaultSaveFolder : folder;
+        _config.FileNameTemplate = FileNameBox.Text.Trim().Length == 0 ? FileNameTemplate.Default : FileNameBox.Text.Trim();
+        _config.SaveFormat = FormatBox.SelectedIndex == 1 ? SaveFormat.Jpeg : SaveFormat.Png;
         _config.CopyToClipboard = CopyToggle.IsChecked == true;
         _config.AutoSave = AutoSaveToggle.IsChecked == true;
         _config.CaptureCursor = CursorToggle.IsChecked == true;

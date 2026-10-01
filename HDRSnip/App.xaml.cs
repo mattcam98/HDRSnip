@@ -32,10 +32,27 @@ public partial class App : Application
         app.Run();
     }
 
+    /// <summary>Where images dragged out of the editor are staged. Emptied at startup and exit.</summary>
+    public static string DragOutFolder { get; } = Path.Combine(Path.GetTempPath(), "HDRSnip", "drag");
+
+    private static void ClearDragOutFolder()
+    {
+        try
+        {
+            if (Directory.Exists(DragOutFolder))
+                Directory.Delete(DragOutFolder, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            LogError("DragOutCleanup", ex);
+        }
+    }
+
     protected override async void OnStartup(StartupEventArgs e)
     {
         InstallErrorHandlers();
         base.OnStartup(e);
+        ClearDragOutFolder();
 
         // `HDRSnip --edit image.png` opens the markup editor on an existing file.
         // It runs beside a tray instance rather than replacing it.
@@ -78,6 +95,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        ClearDragOutFolder();
         CaptureHost.Stop();
         NotificationService.Shutdown();
         ThemeService.Shutdown();

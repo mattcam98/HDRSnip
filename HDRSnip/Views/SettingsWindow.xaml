@@ -61,6 +61,20 @@
               </DockPanel>
             </StackPanel>
 
+            <StackPanel Style="{StaticResource Row}">
+              <TextBlock Text="File name" Style="{StaticResource Type.Body}" Margin="0,0,0,6" />
+              <DockPanel>
+                <ComboBox x:Name="FormatBox" DockPanel.Dock="Right" Style="{StaticResource Field.ComboBox}"
+                          Width="96" Margin="8,0,0,0" SelectionChanged="OnNameChanged"
+                          ToolTip="Format for auto-saved captures and the editor's Save button">
+                  <ComboBoxItem Content="PNG" />
+                  <ComboBoxItem Content="JPEG" />
+                </ComboBox>
+                <TextBox x:Name="FileNameBox" Style="{StaticResource Field.TextBox}" TextChanged="OnNameChanged" />
+              </DockPanel>
+              <TextBlock x:Name="FileNameExample" Style="{StaticResource Type.Caption}" Margin="0,6,0,0" />
+            </StackPanel>
+
             <CheckBox x:Name="CopyToggle"
                       Style="{StaticResource Field.Toggle}"
                       Content="Copy to clipboard after capture"
@@ -68,7 +82,7 @@
 
             <CheckBox x:Name="AutoSaveToggle"
                       Style="{StaticResource Field.Toggle}"
-                      Content="Also save a PNG automatically"
+                      Content="Also save a file automatically"
                       Margin="0,0,0,14" />
 
             <CheckBox x:Name="CursorToggle"

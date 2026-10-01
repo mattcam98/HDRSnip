@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using HDRSnip.Services;
 
 namespace HDRSnip.Models;
 
@@ -9,6 +10,12 @@ public enum ToneMapMethod
     Windows,
     Aces,
     Reinhard
+}
+
+public enum SaveFormat
+{
+    Png,
+    Jpeg
 }
 
 public enum SnipMode
@@ -31,6 +38,12 @@ public sealed class AppConfig
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "HDRSnip");
 
     public string SaveFolder { get; set; } = DefaultSaveFolder;
+
+    /// <summary>Name for saved captures, without extension. See <see cref="FileNameTemplate"/> for the tokens.</summary>
+    public string FileNameTemplate { get; set; } = Services.FileNameTemplate.Default;
+
+    /// <summary>Format for auto-saved captures and the editor's Save button.</summary>
+    public SaveFormat SaveFormat { get; set; } = SaveFormat.Png;
 
     public ToneMapMethod ToneMapMethod { get; set; } = ToneMapMethod.Windows;
 
@@ -136,6 +149,8 @@ public sealed class AppConfig
     {
         if (string.IsNullOrWhiteSpace(SaveFolder))
             SaveFolder = DefaultSaveFolder;
+        if (string.IsNullOrWhiteSpace(FileNameTemplate))
+            FileNameTemplate = Services.FileNameTemplate.Default;
         if (!double.IsFinite(SdrWhiteNits) || SdrWhiteNits <= 0)
             SdrWhiteNits = DefaultSdrWhiteNits;
     }

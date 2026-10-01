@@ -21,6 +21,9 @@
 - **Reshape marks:** selected lines, shapes, redactions and spotlights have handles to drag.
 - **Copy text:** recognises the text in a capture with the OCR engine built into Windows, entirely on your PC.
 - **Colour picker** (`I`): click a pixel to copy its hex colour.
+- **File names and format:** Settings has a name template with date and time tokens and a live example, and a choice of PNG or JPEG for auto-save and the editor's Save. Save as also offers JPEG.
+- **Drag out:** drag the grip in the editor's toolbar to drop the image, markup included, into another app or folder.
+- **Toast buttons:** the capture notification has Edit, Save and Pin buttons.
 - Editor zoom is now in screen pixels, so 100% is pixel-exact on scaled displays.
 
 ### Faster and lighter

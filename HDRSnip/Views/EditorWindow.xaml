@@ -107,6 +107,12 @@
 
           <Border Width="1" Margin="10,4" Background="{DynamicResource Stroke.Subtle}" />
 
+          <Border x:Name="DragGrip" Background="Transparent" Cursor="SizeAll" Padding="9,8" Margin="0,0,4,0"
+                  CornerRadius="{StaticResource Radius.Control}"
+                  MouseLeftButtonDown="OnGripDown" MouseMove="OnGripMove"
+                  ToolTip="Drag from here into another app or a folder">
+            <TextBlock Style="{StaticResource Glyph}" Text="&#xE784;" FontSize="14" Foreground="{DynamicResource Text.Secondary}" />
+          </Border>
           <Button x:Name="CopyTextButton" Style="{StaticResource Button.Subtle}" Click="OnCopyText" Margin="0,0,8,0" Padding="10,7"
                   ToolTip="Recognise the text in this capture and copy it. Runs on this PC">
             <StackPanel Orientation="Horizontal">
