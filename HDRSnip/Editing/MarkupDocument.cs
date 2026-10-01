@@ -43,6 +43,27 @@ public sealed record MarkupDocument(ImmutableArray<Annotation> Annotations, Int3
     public MarkupDocument Replace(Annotation old, Annotation replacement) =>
         this with { Annotations = Annotations.Replace(old, replacement) };
 
+    /// <summary>The marks alone on a transparent, crop-sized bitmap, or null when there are none.</summary>
+    public BitmapSource? RenderMarks(BitmapSource source)
+    {
+        if (Annotations.IsEmpty)
+            return null;
+
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen())
+        {
+            dc.PushTransform(new TranslateTransform(-Crop.X, -Crop.Y));
+            foreach (var annotation in Annotations)
+                annotation.Draw(dc, source);
+            dc.Pop();
+        }
+
+        var marks = new RenderTargetBitmap(Crop.Width, Crop.Height, 96, 96, PixelFormats.Pbgra32);
+        marks.Render(visual);
+        marks.Freeze();
+        return marks;
+    }
+
     /// <summary>
     /// Flattens the document into a plain bitmap for the clipboard or disk.
     /// Returns the source itself when there is nothing to flatten, so an

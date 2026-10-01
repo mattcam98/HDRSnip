@@ -21,17 +21,66 @@
             Padding="14,10">
       <DockPanel>
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
-          <Border x:Name="HdrBadge"
-                  Background="{DynamicResource Accent.Muted}"
-                  BorderBrush="{DynamicResource Accent.Default}"
-                  BorderThickness="1"
-                  CornerRadius="{StaticResource Radius.Small}"
-                  Padding="8,3"
-                  VerticalAlignment="Center">
-            <TextBlock Style="{StaticResource Type.Caption}"
-                       Foreground="{DynamicResource Accent.Default}"
-                       Text="HDR tone-mapped" />
-          </Border>
+          <Button x:Name="HdrBadge" Style="{StaticResource Button.Subtle}" Click="OnOpenTone" Padding="0"
+                  VerticalAlignment="Center" ToolTip="Change how this HDR capture is tone-mapped">
+            <Border Background="{DynamicResource Accent.Muted}"
+                    BorderBrush="{DynamicResource Accent.Default}"
+                    BorderThickness="1"
+                    CornerRadius="{StaticResource Radius.Small}"
+                    Padding="8,3">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource Type.Caption}"
+                           Foreground="{DynamicResource Accent.Default}"
+                           Text="HDR tone-mapped" />
+                <TextBlock Style="{StaticResource Glyph}" Text="&#xE70D;" FontSize="8" Margin="6,1,0,0"
+                           Foreground="{DynamicResource Accent.Default}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Border>
+          </Button>
+          <Popup x:Name="ToneFlyout"
+                 PlacementTarget="{Binding ElementName=HdrBadge}"
+                 Placement="Bottom"
+                 HorizontalOffset="-12"
+                 VerticalOffset="-2"
+                 StaysOpen="False"
+                 AllowsTransparency="True"
+                 PopupAnimation="Fade">
+            <Border Style="{StaticResource Flyout}">
+              <StackPanel Width="250">
+                <TextBlock Style="{StaticResource Type.Subtitle}" Text="Tone-mapping curve" Margin="0,0,0,8" />
+                <StackPanel Orientation="Horizontal">
+                  <RadioButton Style="{StaticResource Tool.Button}" Width="NaN" GroupName="Tone" Tag="Windows" Checked="OnToneChecked"
+                               ToolTip="Best for UI and text">
+                    <TextBlock Style="{StaticResource Type.Body}" Text="Windows" Margin="12,0" />
+                  </RadioButton>
+                  <RadioButton Style="{StaticResource Tool.Button}" Width="NaN" GroupName="Tone" Tag="Aces" Checked="OnToneChecked"
+                               ToolTip="Filmic; best for games and video">
+                    <TextBlock Style="{StaticResource Type.Body}" Text="ACES" Margin="12,0" />
+                  </RadioButton>
+                  <RadioButton Style="{StaticResource Tool.Button}" Width="NaN" GroupName="Tone" Tag="Reinhard" Checked="OnToneChecked"
+                               ToolTip="Softest highlight rolloff">
+                    <TextBlock Style="{StaticResource Type.Body}" Text="Reinhard" Margin="12,0" />
+                  </RadioButton>
+                </StackPanel>
+
+                <StackPanel x:Name="ToneWhitePanel" Margin="0,14,0,0">
+                  <DockPanel>
+                    <TextBlock Style="{StaticResource Type.Subtitle}" Text="SDR white level" />
+                    <TextBlock x:Name="ToneWhiteLabel" Style="{StaticResource Type.Secondary}" HorizontalAlignment="Right" />
+                  </DockPanel>
+                  <Slider x:Name="ToneWhiteSlider"
+                          Style="{StaticResource Field.Slider}"
+                          Focusable="False"
+                          Minimum="80" Maximum="480"
+                          TickFrequency="10"
+                          IsSnapToTickEnabled="True"
+                          Margin="0,4,0,0"
+                          ValueChanged="OnToneWhiteChanged" />
+                  <TextBlock Style="{StaticResource Type.Caption}" Text="Higher values darken the image." />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+          </Popup>
           <TextBlock x:Name="Dimensions"
                      Style="{StaticResource Type.Secondary}"
                      VerticalAlignment="Center"

@@ -34,6 +34,8 @@ looks like what you saw.
 - **Full-screen snip** of the monitor under the cursor
 - **Delayed snip** (3, 5 or 10 s) from the tray, for menus and hover states
 - **Three tone-mapping curves** — Windows/OBS (default, best for UI and text), ACES filmic, Reinhard
+- **Change your mind afterwards** — re-tone-map an HDR capture in the editor with a live preview
+- **Save the real HDR image** as JPEG XR, markup included
 - **SDR white level read from Windows** per monitor, with a manual override
 - **Global hotkeys**, recorded in-app — no config file editing
 - Copies to the clipboard as both DIB and lossless PNG
@@ -100,6 +102,13 @@ Closing with unexported markup asks first. If a new capture arrives while the ed
 unexported markup, it opens in a second window rather than replacing your work.
 
 To mark up an existing file: `HDRSnip.exe --edit image.png`.
+
+### HDR captures
+
+The editor keeps the float pixels of an HDR capture. Click the **HDR tone-mapped** badge to
+try another curve or SDR white level; the preview updates as you go and your marks stay put.
+**Save as → JPEG XR HDR image** writes those float pixels losslessly in linear scRGB — the
+format Windows uses for its own HDR screenshots — with markup composited at SDR white.
 
 ## Settings
 

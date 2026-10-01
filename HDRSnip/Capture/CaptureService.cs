@@ -9,8 +9,13 @@ namespace HDRSnip.Capture;
 
 /// <param name="Png">The image already encoded for the clipboard, when the capture flow needed it.</param>
 /// <param name="SaveFailed">Auto-save was on but the file could not be written.</param>
+/// <param name="Frame">
+/// The float pixels behind an HDR capture, kept so the editor can tone-map it
+/// again or export it as HDR. Null for SDR captures, which gain nothing from it.
+/// </param>
 public sealed record CaptureResult(
-    BitmapSource Image, bool WasHdr, string? SavedPath, byte[]? Png = null, bool SaveFailed = false);
+    BitmapSource Image, bool WasHdr, string? SavedPath, byte[]? Png = null, bool SaveFailed = false,
+    CapturedFrame? Frame = null);
 
 /// <summary>
 /// Everything a capture needs, from screen grab to finished bitmap. Owns no GPU
@@ -86,17 +91,25 @@ public sealed class CaptureService(AppConfig config)
             }
         }
 
-        return new CaptureResult(image, frame.WasHdr, savedPath, png, saveFailed);
+        return new CaptureResult(image, frame.WasHdr, savedPath, png, saveFailed,
+            frame.WasHdr && frame.IsLinearScRgb ? frame : null);
     }
 
-    private WriteableBitmap ToSdr(CapturedFrame frame)
+    public ToneMapMethod ToneMapMethod => config.ToneMapMethod;
+
+    /// <summary>The SDR white level a frame is tone-mapped at unless the user picks another.</summary>
+    public double WhiteLevelFor(CapturedFrame frame) =>
+        config.AutoSdrWhite && frame.SdrWhiteNits is { } detected ? detected : config.SdrWhiteNits;
+
+    private WriteableBitmap ToSdr(CapturedFrame frame) => ToneMap(frame, config.ToneMapMethod, WhiteLevelFor(frame));
+
+    public static WriteableBitmap ToneMap(CapturedFrame frame, ToneMapMethod method, double whiteNits)
     {
         double dpi = Native.GetMonitorScale(
             frame.MonitorBounds.Left + frame.MonitorBounds.Width / 2,
             frame.MonitorBounds.Top + frame.MonitorBounds.Height / 2) * 96.0;
 
-        double white = config.AutoSdrWhite && frame.SdrWhiteNits is { } detected ? detected : config.SdrWhiteNits;
-        return ToneMapper.ToSdrBitmap(frame, config.ToneMapMethod, white, dpi);
+        return ToneMapper.ToSdrBitmap(frame, method, whiteNits, dpi);
     }
 
     private static Int32Rect ClampToFrame(Int32Rect rect, int width, int height)

@@ -8,6 +8,8 @@
 - **Delayed snip:** the tray mode bar has a delay control (3, 5 or 10 s, `D` to cycle) with a click-through countdown, so menus and hover states can be captured.
 - **Automatic SDR white level:** HDRSnip reads each monitor's Windows SDR content brightness at capture time instead of relying on a hand-set value. On by default; existing installs with a customised level keep it.
 - **Numbered steps:** a new editor tool (`N`) places auto-incrementing numbered markers.
+- **HDR export:** HDR captures can be saved as JPEG XR (`.jxr`) from **Save as** — the original float pixels in linear scRGB, losslessly, with any markup composited at SDR white.
+- **Re-tone-map in the editor:** click the *HDR tone-mapped* badge to switch curve or SDR white level with a live preview. Marks and undo history are untouched.
 - Editor zoom is now in screen pixels, so 100% is pixel-exact on scaled displays.
 
 ### Faster and lighter

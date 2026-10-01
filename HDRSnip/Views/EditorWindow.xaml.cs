@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using HDRSnip.Capture;
 using HDRSnip.Editing;
+using HDRSnip.Models;
 using HDRSnip.Services;
 using Microsoft.Win32;
 
@@ -23,11 +24,15 @@ public partial class EditorWindow : Window
     private readonly CaptureService _capture;
     private readonly Dictionary<MarkupTool, RadioButton> _toolButtons = new();
     private readonly List<RadioButton> _swatches = new();
+    private readonly List<RadioButton> _toneButtons;
     private CaptureResult _result = null!;
     private string? _savedPath;
     private double? _zoom;          // null means fit to viewport
     private bool _dirty;            // edits since the last copy or save
     private bool _syncingStyle;
+    private bool _syncingTone;
+    private ToneMapMethod _toneMethod;
+    private double _toneWhite;
     private BitmapSource? _flattened;
 
     public EditorWindow(CaptureResult result, CaptureService capture)
@@ -36,8 +41,9 @@ public partial class EditorWindow : Window
         _capture = capture;
 
         BuildSwatches();
-        foreach (var button in FindToolButtons(this))
+        foreach (var button in FindGroup(this, "Tool"))
             _toolButtons[Enum.Parse<MarkupTool>((string)button.Tag)] = button;
+        _toneButtons = FindGroup(ToneFlyout.Child, "Tone").ToList();
 
         Markup.History.Changed += OnHistoryChanged;
         Markup.SelectionChanged += SyncStyle;
@@ -62,7 +68,14 @@ public partial class EditorWindow : Window
         Markup.Load(result.Image);
         Markup.Tool = MarkupTool.Select;
         _dirty = false;   // after Load: resetting the history counts as a change
-        HdrBadge.Visibility = result.WasHdr ? Visibility.Visible : Visibility.Collapsed;
+        HdrBadge.Visibility = result.Frame is not null ? Visibility.Visible : Visibility.Collapsed;
+        ToneFlyout.IsOpen = false;
+        if (result.Frame is { } frame)
+        {
+            _toneMethod = _capture.ToneMapMethod;
+            _toneWhite = _capture.WhiteLevelFor(frame);
+            SyncTone();
+        }
 
         _zoom = null;
         ApplyZoom();
@@ -102,7 +115,9 @@ public partial class EditorWindow : Window
         Markup.CommitPendingEdits();
         var dialog = new SaveFileDialog
         {
-            Filter = "PNG image|*.png",
+            Filter = _result.Frame is null
+                ? "PNG image|*.png"
+                : "PNG image|*.png|JPEG XR HDR image|*.jxr",
             DefaultExt = ".png",
             FileName = _savedPath is null ? $"HDRSnip_{DateTime.Now:yyyyMMdd_HHmmss}.png" : Path.GetFileName(_savedPath),
             InitialDirectory = Path.GetDirectoryName(_savedPath) ?? App.Config.SaveFolder
@@ -119,7 +134,17 @@ public partial class EditorWindow : Window
         try
         {
             path ??= _capture.BuildSavePath();
-            ImageCodec.Save(Flattened, path);
+            if (_result.Frame is { } frame && Path.GetExtension(path).Equals(".jxr", StringComparison.OrdinalIgnoreCase))
+            {
+                // The float pixels as captured, not the tone-mapped preview; marks sit at SDR white.
+                var document = Markup.Document;
+                ImageCodec.SaveHdr(frame, document.Crop, document.RenderMarks(_result.Image), _capture.WhiteLevelFor(frame), path);
+            }
+            else
+            {
+                ImageCodec.Save(Flattened, path);
+            }
+
             _savedPath = path;
             _dirty = false;
             Status.Text = $"Saved to {path}";
@@ -141,6 +166,62 @@ public partial class EditorWindow : Window
             "Your markup has not been copied or saved. Close anyway?",
             "HDRSnip", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
         e.Cancel = choice != MessageBoxResult.Yes;
+    }
+
+    // ------------------------------------------------------------ tone mapping
+
+    private void OnOpenTone(object sender, RoutedEventArgs e) => ToneFlyout.IsOpen = !ToneFlyout.IsOpen;
+
+    private void OnToneChecked(object sender, RoutedEventArgs e)
+    {
+        if (_syncingTone || sender is not RadioButton { Tag: string tag })
+            return;
+
+        _toneMethod = Enum.Parse<ToneMapMethod>(tag);
+        ApplyTone();
+    }
+
+    private void OnToneWhiteChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (_syncingTone)
+            return;
+
+        _toneWhite = e.NewValue;
+        ApplyTone();
+    }
+
+    /// <summary>Re-renders the capture from its float pixels; the marks and history are untouched.</summary>
+    private void ApplyTone()
+    {
+        // The slider reports its initial value while the window is still being built.
+        if (_result?.Frame is not { } frame)
+            return;
+
+        var image = CaptureService.ToneMap(frame, _toneMethod, _toneWhite);
+        _result = _result with { Image = image, Png = null };
+        Markup.ReplaceSource(image);
+        _flattened = null;
+        _dirty = true;
+        SyncTone();
+    }
+
+    private void SyncTone()
+    {
+        _syncingTone = true;
+        try
+        {
+            foreach (var choice in _toneButtons)
+                choice.IsChecked = (string)choice.Tag == _toneMethod.ToString();
+
+            // Only the Windows curve takes a white level; the others derive exposure from the frame.
+            ToneWhitePanel.Visibility = _toneMethod == ToneMapMethod.Windows ? Visibility.Visible : Visibility.Collapsed;
+            ToneWhiteSlider.Value = _toneWhite;
+            ToneWhiteLabel.Text = $"{_toneWhite:0} nits";
+        }
+        finally
+        {
+            _syncingTone = false;
+        }
     }
 
     // ------------------------------------------------------------ tools
@@ -328,15 +409,15 @@ public partial class EditorWindow : Window
     private static string SizeLabel(double size) => $"{size:0} px";
 
     /// <summary>Logical tree walk: complete right after InitializeComponent, unlike the visual tree.</summary>
-    private static IEnumerable<RadioButton> FindToolButtons(DependencyObject root)
+    private static IEnumerable<RadioButton> FindGroup(DependencyObject root, string group)
     {
         foreach (var child in LogicalTreeHelper.GetChildren(root))
         {
             if (child is not DependencyObject node)
                 continue;
-            if (node is RadioButton { GroupName: "Tool" } button)
+            if (node is RadioButton button && button.GroupName == group)
                 yield return button;
-            foreach (var nested in FindToolButtons(node))
+            foreach (var nested in FindGroup(node, group))
                 yield return nested;
         }
     }

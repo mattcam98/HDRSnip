@@ -269,6 +269,13 @@ public sealed class MarkupCanvas : Canvas
         Tool = MarkupTool.Select;
     }
 
+    /// <summary>Swaps the image under the marks for another rendering of the same capture.</summary>
+    public void ReplaceSource(BitmapSource source)
+    {
+        _source = source;
+        InvalidateVisual();
+    }
+
     /// <summary>Finishes any text being typed so an export includes it.</summary>
     public void CommitPendingEdits() => CommitTextEdit();
 
