@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-4CC2FF?style=flat-square" /></a>
   <img alt="Windows 10 1809+" src="https://img.shields.io/badge/Windows-10%201809%2B-A855F7?style=flat-square" />
-  <img alt=".NET 8" src="https://img.shields.io/badge/.NET-8.0-4CC2FF?style=flat-square" />
+  <img alt=".NET 10" src="https://img.shields.io/badge/.NET-10.0-4CC2FF?style=flat-square" />
 </p>
 
 ---
@@ -30,13 +30,15 @@ looks like what you saw.
 ## Features
 
 - **Region snip** over a frozen, HDR-correct preview of the monitor — what you drag is exactly what you get
+- **Window snip** — in the same overlay, click a window instead of dragging
 - **Full-screen snip** of the monitor under the cursor
+- **Delayed snip** (3, 5 or 10 s) from the tray, for menus and hover states
 - **Three tone-mapping curves** — Windows/OBS (default, best for UI and text), ACES filmic, Reinhard
-- **Adjustable SDR white level** to match your display's HDR settings
+- **SDR white level read from Windows** per monitor, with a manual override
 - **Global hotkeys**, recorded in-app — no config file editing
 - Copies to the clipboard as both DIB and lossless PNG
 - Toast notification, click to open the editor; or open the editor immediately
-- **Markup editor** — pen, highlighter, line, arrow, rectangle, ellipse, text, pixelate and crop, with undo/redo; marks stay editable until you copy or save
+- **Markup editor** — pen, highlighter, line, arrow, rectangle, ellipse, text, numbered steps, pixelate and crop, with undo/redo; marks stay editable until you copy or save
 - Editor with fit/actual-size zoom, copy, save, and save-as
 - Follows the Windows light/dark theme, live
 - Multi-monitor and per-monitor-DPI aware
@@ -60,7 +62,7 @@ Remove it again with `.\build.ps1 uninstall`.
 ```
 
 Requirements: Windows 10 1809 or later. Building needs the
-[.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0); the published app is
+[.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0); the published app is
 self-contained and needs no runtime install.
 
 ## Default hotkeys
@@ -88,6 +90,7 @@ The editor opens on every capture (or from the toast). Pick a tool, draw, then *
 | Line · Arrow | `L` · `A` | Hold `Shift` to snap to 45° |
 | Rectangle · Ellipse | `R` · `E` | Hold `Shift` for a square or circle |
 | Text | `T` | Click to place. `Enter` adds a line, `Ctrl+Enter` or clicking away finishes, `Esc` cancels |
+| Numbered step | `N` | Each click places the next number |
 | Pixelate | `X` | Drag over anything that should not be readable |
 | Crop | `C` | Drag the handles or draw a new area, then `Enter` or **Apply crop**. Non-destructive: crop again to widen |
 | Colour & size | `S` | Remembered per tool |
@@ -102,7 +105,7 @@ To mark up an existing file: `HDRSnip.exe --edit image.png`.
 
 | Setting | Notes |
 |---|---|
-| SDR white level | Higher = darker output. Match your Windows *SDR content brightness* slider; 240–280 suits most displays |
+| SDR white level | Read from each monitor's Windows *SDR content brightness* by default. Turn that off to set a fixed level: higher = darker output |
 | Tone-mapping curve | Windows/OBS for UI and text, ACES for games and video |
 | Copy to clipboard | On by default |
 | Auto-save PNG | Also writes to the save folder on every capture |
